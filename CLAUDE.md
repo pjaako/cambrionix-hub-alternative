@@ -15,6 +15,16 @@ source venv/bin/activate
 pip install -r requirements.txt  # once requirements.txt exists
 ```
 
+## Checking API accessibility
+
+Before running anything, confirm `CambrionixApiService` is up:
+
+```bash
+curl -s http://localhost:43424/api/v1/details | python3 -m json.tool
+```
+
+A healthy response returns the service version under `result.semver`. A connection error means the service is not running. From Python, use `check_api()` in `test_api.py` which returns `(True, version)` or `(False, error)`.
+
 ## Running the test script
 
 ```bash
@@ -22,7 +32,7 @@ source venv/bin/activate
 python test_api.py
 ```
 
-This requires `CambrionixApiService` running locally (default port `43424`).
+The script calls `check_api()` first and exits early with a clear message if the service is unreachable.
 
 ## Architecture
 

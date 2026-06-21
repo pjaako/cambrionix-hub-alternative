@@ -1,8 +1,24 @@
 import socket
 import json
+import urllib.request
+import urllib.error
 
 HOST = '127.0.0.1'
 PORT = 43424
+
+
+def check_api(host=HOST, port=PORT):
+    """Return (True, version_string) if the REST API is reachable, else (False, error_message)."""
+    url = f"http://{host}:{port}/api/v1/details"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.load(resp)
+            v = data["result"]["semver"]
+            return True, v
+    except urllib.error.URLError as e:
+        return False, str(e.reason)
+    except Exception as e:
+        return False, str(e)
 
 
 def rpc(sock, req_id, method, params=None):
@@ -44,6 +60,12 @@ def get_port_vitals(sock, handle, port):
 
 
 def test_cambrionix_api(host=HOST, port=PORT):
+    ok, info = check_api(host, port)
+    if not ok:
+        print(f"CambrionixApiService not reachable at {host}:{port} — {info}")
+        return False
+    print(f"CambrionixApiService {info} reachable.")
+
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(5)
