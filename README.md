@@ -6,6 +6,7 @@ A Python-based application with a web GUI to control and log the charging proces
 
 - Python 3.8+
 - Cambrionix Hub (with network or USB access for API calls)
+- [CambrionixApiService](https://connect.cambrionix.com) v4.0+ installed and running on the host machine
 
 ## Getting Started
 
