@@ -1,6 +1,16 @@
-# Cambrionix Hub API Reference (Unofficial)
+# Cambrionix Hub API Reference (Unofficial) — OBSOLETE
 
-This repository contains a community-maintained Markdown conversion of the **Cambrionix Hub API User Manual** (Target API: v3.9+ / June 2025).
+> **⚠ Do not use this documentation for new development.**
+>
+> This folder documents the **legacy JSON-RPC API (v3.9)**, which has been superseded by the **REST API (v4.0)**. The v3.9 reference contains known inaccuracies against the v4.0 service (flag field behaviour, response shapes) and will not be updated.
+>
+> **Use the live API documentation served by `CambrionixApiService` instead:**
+> - Swagger UI: `http://localhost:43424/api/v1/swagger`
+> - OpenAPI JSON: `http://localhost:43424/openapi.json`
+>
+> This folder is kept for historical reference only.
+
+This directory contains a community-maintained Markdown conversion of the **Cambrionix Hub API User Manual** (Target API: v3.9+ / June 2025).
 
 ## Disclaimer
 
