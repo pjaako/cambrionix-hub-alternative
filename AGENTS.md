@@ -43,9 +43,11 @@ Do not rely on the `docs/` folder as a reference — it documents the legacy JSO
 
 Port 0 is the hub's internal FTDI serial interface, not a device port. Device ports start at 1. Attachment state is exposed as a boolean field (`"attached": true/false`) in the port object, not via a flag character.
 
-### Known API bug
+### Known API bugs
 
-`GET /api/v1/hubs/{hubId}/ports/{portId}` omits the `energy` field (`power.charge.charging.energy`) from its response despite it being marked `required` in the service's own OpenAPI schema (`Charging` and `Charged` types). Bug reported to Cambrionix; confirmed unfixed on firmware 1.0.4 and 1.3.0. See `bug_report_rest_api_missing_energy_wh.md` for the full report. As a workaround, energy is available via the legacy JSON-RPC interface — see `test_api.py` (`get_port_vitals`).
+See `bugs/README.md` for the index of reported bugs and reproduction scripts.
+
+`GET /api/v1/hubs/{hubId}/ports/{portId}` omits the `energy` field (`power.charge.charging.energy`) from its response despite it being marked `required` in the service's own OpenAPI schema (`Charging` and `Charged` types). Bug reported to Cambrionix; confirmed unfixed on firmware 1.0.4 and 1.3.0. See `bugs/bug_report_rest_api_missing_energy_wh.md` for the full report. As a workaround, energy is available via the legacy JSON-RPC interface — see `test_api.py` (`get_port_vitals`).
 
 ## Running the test script
 

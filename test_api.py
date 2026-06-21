@@ -20,6 +20,13 @@ def firmware_command(hub_id, command_text, host=HOST, port=PORT):
         return resp.read().decode('utf-8')
 
 
+def rest_list_hubs(host=HOST, port=PORT):
+    """Return the serial numbers of all hubs the REST API currently sees."""
+    url = f"http://{host}:{port}/api/v1/hubs"
+    with urllib.request.urlopen(url, timeout=5) as resp:
+        return [hub["serialNumber"] for hub in json.load(resp)["result"]]
+
+
 def rest_get_port(hub_id, port_id, host=HOST, port=PORT):
     """GET a port's state via the REST API."""
     url = f"http://{host}:{port}/api/v1/hubs/{hub_id}/ports/{port_id}"
