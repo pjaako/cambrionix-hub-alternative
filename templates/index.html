@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cambrionix Hub Monitor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: #111; color: #e0e0e0; padding: 24px; }
+        h1 { font-size: 1.2rem; color: #aaa; margin-bottom: 20px; letter-spacing: 0.05em; }
+        #status { color: #f87171; min-height: 1.2em; margin-bottom: 12px; font-size: 0.85rem; }
+
+        #ports { display: flex; flex-wrap: wrap; gap: 16px; }
+
+        .port-card {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            width: 220px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .port-card.attached { border-color: #2563eb; }
+
+        .port-header { display: flex; justify-content: space-between; align-items: center; }
+        .port-id { font-weight: 600; font-size: 1rem; }
+        .mode-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #374151;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .metrics { display: flex; flex-direction: column; gap: 6px; }
+        .metric { display: flex; justify-content: space-between; font-size: 0.9rem; }
+        .label { color: #6b7280; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; }
+        .idle { color: #4b5563; font-size: 0.85rem; }
+
+        .mode-control { display: flex; gap: 8px; }
+        select {
+            flex: 1;
+            background: #2d2d2d;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-size: 0.85rem;
+        }
+        button {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        button:hover { background: #1d4ed8; }
+    </style>
+</head>
+<body>
+    <h1>CAMBRIONIX HUB MONITOR</h1>
+    <div id="status"></div>
+    <div id="ports">
+        {% for p in ports %}
+        <div class="port-card {{ 'attached' if p.attached else 'idle' }}">
+            <div class="port-header">
+                <span class="port-id">Port {{ p.id }}</span>
+                <span class="mode-badge">{{ p.mode }}</span>
+            </div>
+            {% if p.attached %}
+            <div class="metrics">
+                <span class="metric"><span class="label">V</span> {{ "%.2f V"|format(p.voltage_v) if p.voltage_v is not none else "—" }}</span>
+                <span class="metric"><span class="label">I</span> {{ p.current_ma ~ " mA" if p.current_ma is not none else "—" }}</span>
+                <span class="metric"><span class="label">T</span> {{ p.charging_seconds ~ " s" if p.charging_seconds is not none else "—" }}</span>
+            </div>
+            {% else %}
+            <div class="metrics idle">No device attached</div>
+            {% endif %}
+            <div class="mode-control">
+                <select id="mode-{{ p.id }}">
+                    {% for m in modes %}
+                    <option value="{{ m }}" {{ 'selected' if m == p.mode else '' }}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+                <button onclick="setMode({{ p.id }})">Set</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <script src="/static/main.js"></script>
+</body>
+</html>

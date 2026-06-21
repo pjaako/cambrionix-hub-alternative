@@ -59,8 +59,23 @@ The authoritative, always-current API reference is self-hosted by the running se
 
 - `GET /api/v1/hubs/{hubId}/ports/{portId}` does not return the `energy` field (`power.charge.charging.energy`) despite it being marked `required` in the OpenAPI schema (`Charging` and `Charged` types). Bug reported to Cambrionix; confirmed on firmware 1.0.4 and 1.3.0. As a workaround, `Port.N.Energy_Wh` is available via the legacy JSON-RPC interface (see `test_api.py`).
 
-## Tech Stack (to be decided)
+## Running the web app
 
-- Language: Python 3.8+
-- GUI: Web-based (Flask or FastAPI + frontend TBD)
-- API transport: HTTP (REST)
+```bash
+source venv/bin/activate
+uvicorn app:app --reload
+# Open http://localhost:8000
+```
+
+The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode can be set via the dropdown on each port card.
+
+## Tech Stack
+
+- Language: Python 3.11+
+- Framework: FastAPI + Jinja2 + vanilla JS (polling)
+- API transport: HTTP (REST via httpx)
+- Key files: `app.py` (routes), `hub_client.py` (API client), `models.py` (PortState dataclass), `templates/index.html`, `static/main.js`
+
+### Supported port modes
+
+The hub advertises its supported modes via `GET /api/v1/hubs/{hubId}/ports/modes/supported`. The PDSync-C4 supports `on` and `off` only. `charge` and `detect` are legacy-hub-only modes. The app fetches supported modes dynamically at startup via `CambrionixClient.supported_modes()`.
