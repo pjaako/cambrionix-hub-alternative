@@ -1,10 +1,39 @@
 import socket
 import json
+import sys
+import time
 import urllib.request
 import urllib.error
 
 HOST = '127.0.0.1'
 PORT = 43424
+
+
+def firmware_command(hub_id, command_text, host=HOST, port=PORT):
+    """Send raw text command(s) straight to the hub's own firmware CLI via
+    POST /api/v1/hubs/{hubId}/command, bypassing both REST and JSON-RPC service logic.
+    Returns the raw text output from the hub."""
+    url = f"http://{host}:{port}/api/v1/hubs/{hub_id}/command"
+    req = urllib.request.Request(url, data=command_text.encode('utf-8'), method='POST',
+                                  headers={'Content-Type': 'text/plain'})
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return resp.read().decode('utf-8')
+
+
+def rest_get_port(hub_id, port_id, host=HOST, port=PORT):
+    """GET a port's state via the REST API."""
+    url = f"http://{host}:{port}/api/v1/hubs/{hub_id}/ports/{port_id}"
+    with urllib.request.urlopen(url, timeout=5) as resp:
+        return json.load(resp)["result"]
+
+
+def rest_set_mode(hub_id, port_id, mode, host=HOST, port=PORT):
+    """POST a port mode ('on'/'off') via the REST API."""
+    url = f"http://{host}:{port}/api/v1/hubs/{hub_id}/ports/{port_id}/mode"
+    req = urllib.request.Request(url, data=json.dumps({"mode": mode}).encode('utf-8'), method='POST',
+                                  headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return json.load(resp)
 
 
 def check_api(host=HOST, port=PORT):
@@ -39,6 +68,16 @@ def rpc(sock, req_id, method, params=None):
         except json.JSONDecodeError:
             if not chunk:
                 return None
+
+
+def get_port_mode(sock, handle, port):
+    """Return the current Port.N.Mode value via JSON-RPC ('c', 's', 'b', or 'o')."""
+    return rpc(sock, 200, "cbrx_connection_get", [handle, f"Port.{port}.Mode"])
+
+
+def set_port_mode(sock, handle, port, mode):
+    """Set Port.N.Mode via JSON-RPC. mode: 'c' charge, 's' sync+charge, 'b' biased, 'o' off."""
+    return rpc(sock, 201, "cbrx_connection_set", [handle, f"Port.{port}.Mode", mode])
 
 
 def get_port_vitals(sock, handle, port):
@@ -121,5 +160,109 @@ def test_cambrionix_api(host=HOST, port=PORT):
         return False
 
 
+def mode_toggle_diagnostic(port_id, host=HOST, port=PORT):
+    """Toggle a port off then on via JSON-RPC (bypassing the REST API) and report the resulting mode/current.
+
+    Used to isolate whether a stuck-off port is a REST API layer bug or a deeper
+    firmware/service issue: if JSON-RPC can restore 'on' state, the fault is in the REST layer.
+    """
+    ok, info = check_api(host, port)
+    if not ok:
+        print(f"CambrionixApiService not reachable at {host}:{port} — {info}")
+        return False
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(5)
+        sock.connect((host, port))
+
+        units = rpc(sock, 1, "cbrx_discover", ["local"])
+        if not units:
+            print("No Cambrionix units found.")
+            return False
+
+        handle = rpc(sock, 2, "cbrx_connection_open", [units[0]])
+        if handle is None:
+            print("Could not open connection to hub.")
+            return False
+
+        print(f"Port.{port_id}.Mode before: {get_port_mode(sock, handle, port_id)!r}")
+
+        print(f"\nSetting Port.{port_id}.Mode = 'o' (off) via JSON-RPC...")
+        print(f"  set result: {set_port_mode(sock, handle, port_id, 'o')!r}")
+        print(f"  mode after: {get_port_mode(sock, handle, port_id)!r}")
+        print(f"  current_mA after: {rpc(sock, 3, 'cbrx_connection_get', [handle, f'Port.{port_id}.Current_mA'])!r}")
+
+        print(f"\nSetting Port.{port_id}.Mode = 'c' (charge/on) via JSON-RPC...")
+        print(f"  set result: {set_port_mode(sock, handle, port_id, 'c')!r}")
+        print(f"  mode after: {get_port_mode(sock, handle, port_id)!r}")
+        print(f"  current_mA after: {rpc(sock, 4, 'cbrx_connection_get', [handle, f'Port.{port_id}.Current_mA'])!r}")
+
+        rpc(sock, 5, "cbrx_connection_close", [handle])
+        return True
+
+
+def firmware_mode_toggle_diagnostic(hub_id, port_id, host=HOST, port=PORT, pause=5):
+    """Toggle a port off then on via the hub's raw firmware CLI (the /command endpoint),
+    bypassing REST and JSON-RPC entirely. This is the most direct way to tell whether a
+    stuck port is a firmware/hardware fault or a bug introduced by the service layers above it:
+    if the firmware CLI can restore charging, the fault lives in CambrionixApiService, not the hub.
+
+    `pause` seconds are held between each step so the change can be observed visually on the hub.
+    """
+    print(f"--- before ---\n{firmware_command(hub_id, f'state {port_id}\n', host, port)}")
+
+    print(f"--- mode o {port_id} (off) ---\n{firmware_command(hub_id, f'mode o {port_id}\n', host, port)}")
+    print(f"--- after off ---\n{firmware_command(hub_id, f'state {port_id}\n', host, port)}")
+
+    print(f"(waiting {pause}s)")
+    time.sleep(pause)
+
+    print(f"--- mode c {port_id} (charge/on) ---\n{firmware_command(hub_id, f'mode c {port_id}\n', host, port)}")
+
+    print(f"(waiting {pause}s)")
+    time.sleep(pause)
+
+    print(f"--- after on ---\n{firmware_command(hub_id, f'state {port_id}\n', host, port)}")
+
+
+def sync_wakeup_diagnostic(hub_id, port_id, host=HOST, port=PORT, pause=5):
+    """Test whether nudging a stuck-off port into JSON-RPC 'sync' mode wakes it back up to 'on'.
+
+    Sequence: REST off -> pause -> JSON-RPC Port.N.Mode='s' -> pause -> REST on -> pause -> check.
+    Reports REST port state at each step so it's clear whether the sync nudge had any effect.
+    """
+    print(f"--- before ---\n{rest_get_port(hub_id, port_id, host, port)}")
+
+    print(f"\n--- REST mode=off ---\n{rest_set_mode(hub_id, port_id, 'off', host, port)}")
+    print(f"after off: {rest_get_port(hub_id, port_id, host, port)}")
+    print(f"(waiting {pause}s)")
+    time.sleep(pause)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(5)
+        sock.connect((host, port))
+        units = rpc(sock, 1, "cbrx_discover", ["local"])
+        handle = rpc(sock, 2, "cbrx_connection_open", [units[0]])
+        print(f"\n--- JSON-RPC Port.{port_id}.Mode = 's' (sync) ---")
+        print(f"set result: {set_port_mode(sock, handle, port_id, 's')!r}")
+        print(f"mode after: {get_port_mode(sock, handle, port_id)!r}")
+        rpc(sock, 3, "cbrx_connection_close", [handle])
+    print(f"after sync nudge: {rest_get_port(hub_id, port_id, host, port)}")
+    print(f"(waiting {pause}s)")
+    time.sleep(pause)
+
+    print(f"\n--- REST mode=on ---\n{rest_set_mode(hub_id, port_id, 'on', host, port)}")
+    print(f"(waiting {pause}s)")
+    time.sleep(pause)
+    print(f"after on: {rest_get_port(hub_id, port_id, host, port)}")
+
+
 if __name__ == "__main__":
-    test_cambrionix_api()
+    if len(sys.argv) > 1 and sys.argv[1] == "mode-test":
+        mode_toggle_diagnostic(int(sys.argv[2]))
+    elif len(sys.argv) > 1 and sys.argv[1] == "fw-mode-test":
+        firmware_mode_toggle_diagnostic(sys.argv[2], int(sys.argv[3]))
+    elif len(sys.argv) > 1 and sys.argv[1] == "sync-wakeup-test":
+        sync_wakeup_diagnostic(sys.argv[2], int(sys.argv[3]))
+    else:
+        test_cambrionix_api()

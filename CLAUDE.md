@@ -58,6 +58,7 @@ The authoritative, always-current API reference is self-hosted by the running se
 ## Known issues
 
 - `GET /api/v1/hubs/{hubId}/ports/{portId}` does not return the `energy` field (`power.charge.charging.energy`) despite it being marked `required` in the OpenAPI schema (`Charging` and `Charged` types). Bug reported to Cambrionix; confirmed on firmware 1.0.4 and 1.3.0. As a workaround, `Port.N.Energy_Wh` is available via the legacy JSON-RPC interface (see `test_api.py`).
+- `POST /api/v1/hubs/{hubId}/ports/{portId}/mode` with `{"mode": "off"}` works, but a subsequent call with `{"mode": "on"}` returns `{"result": true}` while the port state stays stuck on `"off"`. The port mode is effectively a one-way trip via this endpoint. The only confirmed recovery is rebooting the whole hub via `POST /api/v1/hubs/{hubId}/reboot` (may need a retry — first attempt can return `{"error":{"code":"reboot-failed","message":"The hub is not ready"}}`). Confirmed on firmware 1.3.0. See `bug_report_rest_api_mode_off_unrecoverable.md`.
 
 ## Running the web app
 
