@@ -28,6 +28,23 @@ A Python-based application with a web GUI to control and log the charging proces
    pip install -r requirements.txt
    ```
 
+## Running the App
+
+Make sure `CambrionixApiService` is running and reachable before starting the app:
+
+```bash
+curl -s http://localhost:43424/api/v1/details | python3 -m json.tool
+```
+
+Then start the web app:
+
+```bash
+source venv/bin/activate
+uvicorn app:app --reload
+```
+
+Open `http://localhost:8000` in your browser. The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode can be set via the dropdown on each port card.
+
 ## Documentation
 
 The primary API reference is served live by `CambrionixApiService` itself:
