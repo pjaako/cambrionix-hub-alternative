@@ -23,8 +23,9 @@ class ModeRequest(BaseModel):
 def index(request: Request):
     ports = hub.get_ports()
     modes = hub.supported_modes()
+    hub_id = hub.hub_id()
     return templates.TemplateResponse(
-        request=request, name="index.html", context={"ports": ports, "modes": modes}
+        request=request, name="index.html", context={"ports": ports, "modes": modes, "hub_id": hub_id}
     )
 
 

@@ -1,98 +1,233 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cambrionix Hub Monitor</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: system-ui, sans-serif; background: #111; color: #e0e0e0; padding: 24px; }
-        h1 { font-size: 1.2rem; color: #aaa; margin-bottom: 20px; letter-spacing: 0.05em; }
-        #status { color: #f87171; min-height: 1.2em; margin-bottom: 12px; font-size: 0.85rem; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hub Monitor · {{ hub_id }}</title>
+  <style>
+    :root {
+      --bg:       #0c0c0e;
+      --card:     #131316;
+      --border:   #1e1e24;
+      --text:     #d4d4e0;
+      --dim:      #4a4a5a;
+      --cyan:     #00c8e0;
+      --amber:    #f59e0b;
+      --green:    #4ade80;
+      --red:      #f87171;
+      --mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', monospace;
+    }
 
-        #ports { display: flex; flex-wrap: wrap; gap: 16px; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .port-card {
-            background: #1e1e1e;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 16px;
-            width: 220px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .port-card.attached { border-color: #2563eb; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, sans-serif;
+      padding: 28px 24px;
+      min-height: 100vh;
+    }
 
-        .port-header { display: flex; justify-content: space-between; align-items: center; }
-        .port-id { font-weight: 600; font-size: 1rem; }
-        .mode-badge {
-            font-size: 0.7rem;
-            padding: 2px 8px;
-            border-radius: 999px;
-            background: #374151;
-            color: #9ca3af;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
+    /* ── HEADER ── */
+    .site-header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .site-header h1 {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 400;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+    .hub-serial {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      color: var(--cyan);
+    }
 
-        .metrics { display: flex; flex-direction: column; gap: 6px; }
-        .metric { display: flex; justify-content: space-between; font-size: 0.9rem; }
-        .label { color: #6b7280; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; }
-        .idle { color: #4b5563; font-size: 0.85rem; }
+    /* ── ERROR ── */
+    #error {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--red);
+      min-height: 1rem;
+      margin-bottom: 16px;
+      letter-spacing: 0.05em;
+    }
 
-        .mode-control { display: flex; gap: 8px; }
-        select {
-            flex: 1;
-            background: #2d2d2d;
-            border: 1px solid #444;
-            color: #e0e0e0;
-            border-radius: 4px;
-            padding: 4px 6px;
-            font-size: 0.85rem;
-        }
-        button {
-            background: #2563eb;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            padding: 4px 10px;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-        button:hover { background: #1d4ed8; }
-    </style>
+    /* ── GRID ── */
+    #ports { display: flex; flex-wrap: wrap; gap: 10px; }
+
+    /* ── PORT CARD ── */
+    .port-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--border);
+      width: 188px;
+    }
+
+    .port-card.s-active  { border-top-color: var(--cyan); }
+    .port-card.s-standby { border-top-color: var(--amber); }
+
+    .card-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── CARD HEADER ── */
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .port-label {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    /* ── LED ── */
+    .led {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #252530;
+    }
+    .led.active {
+      background: var(--cyan);
+      box-shadow: 0 0 5px var(--cyan);
+      animation: blink 2.4s ease-in-out infinite;
+    }
+    .led.standby {
+      background: var(--amber);
+      box-shadow: 0 0 4px var(--amber);
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) { .led.active { animation: none; } }
+
+    /* ── METRICS ── */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .metric-cell { display: flex; flex-direction: column; gap: 2px; }
+    .metric-key {
+      font-size: 0.55rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+    .metric-val {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text);
+    }
+    .metric-val.nil { color: #2a2a35; }
+
+    .no-device {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #252530;
+      text-align: center;
+      padding: 2px 0;
+    }
+
+    /* ── MODE TOGGLE ── */
+    .mode-toggle {
+      display: flex;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .mode-toggle input[type="radio"] { display: none; }
+    .mode-toggle label {
+      flex: 1;
+      text-align: center;
+      padding: 7px 0;
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #2e2e3a;
+      background: #0e0e11;
+      cursor: pointer;
+      transition: color 0.1s, background 0.1s, box-shadow 0.1s;
+      user-select: none;
+    }
+    .mode-toggle label + label { border-left: 1px solid var(--border); }
+
+    .mode-toggle input:checked + .opt-on {
+      color: var(--green);
+      background: #0e1a12;
+      box-shadow: inset 0 0 0 1px rgba(74,222,128,.25), inset 0 -2px 8px rgba(74,222,128,.12);
+    }
+    .mode-toggle input:checked + .opt-off {
+      color: var(--red);
+      background: #1a0e0e;
+      box-shadow: inset 0 0 0 1px rgba(248,113,113,.2), inset 0 -2px 8px rgba(248,113,113,.1);
+    }
+    .mode-toggle label:not(:has(~ input:checked)):hover,
+    .mode-toggle input:not(:checked) + label:hover {
+      color: #555568;
+      background: #131318;
+    }
+  </style>
 </head>
 <body>
-    <h1>CAMBRIONIX HUB MONITOR</h1>
-    <div id="status"></div>
-    <div id="ports">
-        {% for p in ports %}
-        <div class="port-card {{ 'attached' if p.attached else 'idle' }}">
-            <div class="port-header">
-                <span class="port-id">Port {{ p.id }}</span>
-                <span class="mode-badge">{{ p.mode }}</span>
-            </div>
-            {% if p.attached %}
-            <div class="metrics">
-                <span class="metric"><span class="label">V</span> {{ "%.2f V"|format(p.voltage_v) if p.voltage_v is not none else "—" }}</span>
-                <span class="metric"><span class="label">I</span> {{ p.current_ma ~ " mA" if p.current_ma is not none else "—" }}</span>
-                <span class="metric"><span class="label">T</span> {{ p.charging_seconds ~ " s" if p.charging_seconds is not none else "—" }}</span>
-            </div>
-            {% else %}
-            <div class="metrics idle">No device attached</div>
-            {% endif %}
-            <div class="mode-control">
-                <select id="mode-{{ p.id }}">
-                    {% for m in modes %}
-                    <option value="{{ m }}" {{ 'selected' if m == p.mode else '' }}>{{ m }}</option>
-                    {% endfor %}
-                </select>
-                <button onclick="setMode({{ p.id }})">Set</button>
-            </div>
+  <header class="site-header">
+    <h1>Hub Monitor</h1>
+    <span class="hub-serial">{{ hub_id }}</span>
+  </header>
+  <div id="error"></div>
+  <div id="ports">
+    {% for p in ports %}
+    {% set s = 'active' if (p.attached and p.mode == 'on') else ('standby' if p.attached else 'idle') %}
+    <div class="port-card s-{{ s }}">
+      <div class="card-body">
+        <div class="card-head">
+          <span class="port-label">Port {{ '%02d' | format(p.id) }}</span>
+          <span class="led {{ s if s != 'idle' else '' }}"></span>
         </div>
-        {% endfor %}
+
+        {% if p.attached %}
+        <div class="metrics">
+          <div class="metric-cell">
+            <span class="metric-key">V</span>
+            <span class="metric-val">{{ "%.1f"|format(p.voltage_v) if p.voltage_v is not none else "—" }}</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-key">I  mA</span>
+            <span class="metric-val">{{ p.current_ma if p.current_ma is not none else "—" }}</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-key">T</span>
+            <span class="metric-val">{{ p.charging_seconds ~ "s" if p.charging_seconds is not none else "—" }}</span>
+          </div>
+        </div>
+        {% else %}
+        <div class="no-device">no device</div>
+        {% endif %}
+
+        <div class="mode-toggle">
+          {% for m in modes %}
+          <input type="radio" name="port-mode-{{ p.id }}" id="md-{{ p.id }}-{{ m }}"
+                 value="{{ m }}" {{ 'checked' if m == p.mode else '' }}
+                 onchange="setMode({{ p.id }}, '{{ m }}')">
+          <label for="md-{{ p.id }}-{{ m }}" class="opt-{{ m }}">{{ m }}</label>
+          {% endfor %}
+        </div>
+      </div>
     </div>
-    <script src="/static/main.js"></script>
+    {% endfor %}
+  </div>
+  <script src="/static/main.js"></script>
 </body>
 </html>
