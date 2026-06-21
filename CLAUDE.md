@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Goal
 
-Build a Python web application (GUI) to monitor and control charging processes for devices connected to Cambrionix hubs via the Cambrionix Hub API.
+Build a Python web application (GUI) to monitor and control charging processes for devices connected to Cambrionix hubs via the Cambrionix Hub REST API (v4.0).
 
 ## Environment
 
@@ -26,35 +26,31 @@ This requires `CambrionixApiService` running locally (default port `43424`).
 
 ## Architecture
 
-The Cambrionix Hub API is a **JSON-RPC 2.0 service** (`CambrionixApiService`) that listens on `localhost:43424`. It can be reached via:
-- Raw TCP socket (as in `test_api.py`)
-- HTTP GET (`http://localhost:43424/?{json}`)
-- WebSocket (`ws://localhost:43424`, protocol `jsonrpc`)
+`CambrionixApiService` runs locally and exposes a **REST HTTP API (v4.0)** at `http://localhost:43424/api/v1/`. This is the API to use for all new development.
 
-The application layer sits on top of this daemon. The typical call sequence is:
-1. `cbrx_discover("local")` → get hub serial numbers
-2. `cbrx_connection_open(hub_serial)` → get a connection handle (integer)
-3. `cbrx_connection_get(handle, key)` / `cbrx_connection_set(handle, key, value)` → read/write hub state
-4. `cbrx_connection_close(handle)` → release handle
+Typical call pattern:
+1. `GET /api/v1/hubs` → list connected hubs (returns serial numbers)
+2. `GET /api/v1/hubs/{hubId}/ports` → all port states for a hub
+3. `GET /api/v1/hubs/{hubId}/ports/{portId}` → single port state
+4. `POST /api/v1/hubs/{hubId}/ports/{portId}/mode` → set port mode
 
-Connection handles expire after **30 seconds of inactivity** unless notifications are registered.
+Port numbering note: port 0 is the hub's own FTDI serial interface, not a device port. Device ports start at 1.
 
 ## API Reference
 
-All API documentation lives in `docs/cambrionix-hub-api-reference-v3.9/`:
-- `01-overview-and-methods.md` — connection methods, all 34 API calls (5.1–5.34), notifications, deprecated methods, device string, API management, logging, docks
-- `02-get-dictionary.md` — readable keys (hub properties, per-port data)
-- `03-set-dictionary-and-misc.md` — writeable keys, LED control, battery info, error codes
+The authoritative, always-current API reference is self-hosted by the running service:
 
-**Always consult these docs before implementing any API call** to get correct method names, parameter order, and return shapes.
+- **Swagger UI**: `http://localhost:43424/api/v1/swagger`
+- **OpenAPI JSON**: `http://localhost:43424/openapi.json` (45 endpoints, with per-endpoint sub-specs and schemas resolvable under the same host)
 
-Key API calls for charging control:
-- `cbrx_connection_set(handle, "Port.N.mode", value)` — set port charging mode
-- `cbrx_connection_get(handle, "Port.N.CurrentLimit_mA")` — read port current
-- `cbrx_notifications` — subscribe to async events (USB attach/detach, over-temp, over-voltage)
+**Always fetch the live OpenAPI spec rather than relying on the local `docs/` folder.** The `docs/` directory contains a v3.9 JSON-RPC reference that is outdated and has known inaccuracies against the v4.0 service.
+
+## Known issues
+
+- `GET /api/v1/hubs/{hubId}/ports/{portId}` does not return the `energy` field (`power.charge.charging.energy`) despite it being marked `required` in the OpenAPI schema (`Charging` and `Charged` types). Bug reported to Cambrionix; confirmed on firmware 1.0.4 and 1.3.0. As a workaround, `Port.N.Energy_Wh` is available via the legacy JSON-RPC interface (see `test_api.py`).
 
 ## Tech Stack (to be decided)
 
 - Language: Python 3.8+
 - GUI: Web-based (Flask or FastAPI + frontend TBD)
-- API transport: JSON-RPC over TCP or WebSocket
+- API transport: HTTP (REST)

@@ -1,13 +1,6 @@
 # Cambrionix Hub Alternative
 
-A Python-based application with a web GUI to control and log the charging process of devices connected to a Cambrionix Hub via the Cambrionix Hub API.
-
-## Features
-
-- **Web GUI**: User-friendly interface to monitor and control the hub.
-- **Charging Control**: Ability to set charging modes and limits for connected devices.
-- **Logging**: Detailed logs of charging processes for analysis and auditing.
-- **Cambrionix API Integration**: Built on top of the official Cambrionix Hub API (v3.9+).
+A Python-based application with a web GUI to control and log the charging process of devices connected to a Cambrionix Hub via the Cambrionix Hub REST API (v4.0).
 
 ## Prerequisites
 
@@ -36,10 +29,12 @@ A Python-based application with a web GUI to control and log the charging proces
 
 ## Documentation
 
-The API reference and user manuals can be found in the `docs/` directory.
+The primary API reference is served live by `CambrionixApiService` itself:
 
-- [Cambrionix Hub API Reference](./docs/cambrionix-hub-api-reference-v3.9/01-overview-and-methods.md)
-- [Cambrionix Hub API User Manual (PDF)](./docs/Cambrionix-Hub-API-User-Manual-v3.9.pdf)
+- **Swagger UI**: `http://localhost:43424/api/v1/swagger`
+- **OpenAPI JSON**: `http://localhost:43424/openapi.json`
+
+The `docs/` directory contains an older v3.9 JSON-RPC reference, kept for historical context only.
 
 ## License
 
