@@ -238,6 +238,10 @@ class CliTransport(ABC):
     @abstractmethod
     def send_command(self, cmd: str) -> str: ...
 
+    def hub_serial(self) -> str | None:
+        """Return the hub's USB/OS-level serial number if known by this transport, else None."""
+        return None
+
 
 class SerialTransport(CliTransport):
     def __init__(self, port: str, baud_rate: int = 115200, timeout: float = 1.0):
@@ -268,6 +272,20 @@ class SerialTransport(CliTransport):
                 break
         return response
 
+    def hub_serial(self) -> str | None:
+        import subprocess
+        try:
+            out = subprocess.run(
+                ["udevadm", "info", "--query=property", self._port],
+                capture_output=True, text=True, timeout=3,
+            ).stdout
+            for line in out.splitlines():
+                if line.startswith("ID_SERIAL_SHORT="):
+                    return line.split("=", 1)[1]
+        except Exception:
+            pass
+        return None
+
     def close(self) -> None:
         if self._ser and self._ser.is_open:
             self._ser.close()
@@ -277,8 +295,12 @@ class ApiProxyTransport(CliTransport):
     """Sends CLI commands via POST /api/v1/hubs/{hubId}/command (REST v4.0 proxy)."""
 
     def __init__(self, hub_id: str, base: str = _REST_BASE):
+        self._hub_id = hub_id
         self._url = f"{base}/hubs/{hub_id}/command"
         self._client = httpx.Client(timeout=5)
+
+    def hub_serial(self) -> str:
+        return self._hub_id
 
     def send_command(self, cmd: str) -> str:
         resp = self._client.post(
@@ -311,12 +333,13 @@ class CliClient(HubClient):
         info: dict[str, str] = {}
         for line in raw.splitlines():
             if "mfr:" in line:
-                for part in line.replace(">>", "").strip().split(","):
+                for part in line.replace(">>", "").strip().split(","):  
                     if ":" in part:
                         k, v = part.split(":", 1)
                         info[k.strip()] = v.strip()
                 break
-        self._hub_serial = info.get("sn", "unknown")
+        # Prefer USB-level serial from transport (FTDI chip); firmware sn may be zeroed
+        self._hub_serial = self._transport.hub_serial() or info.get("sn", "unknown")
         self._fc = info.get("fc", "")
 
     def supported_modes(self) -> list[str]:
