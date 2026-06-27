@@ -45,4 +45,4 @@ def api_set_mode(port_id: int, body: ModeRequest):
     if body.mode not in valid:
         raise HTTPException(status_code=422, detail=f"mode must be one of {valid}")
     hub.set_mode(port_id, body.mode)
-    return asdict(hub.get_port(port_id))
+    return {"mode": body.mode}
