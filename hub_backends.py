@@ -331,6 +331,7 @@ class CliClient(HubClient):
         self._transport.send_command(f"mode {cli_mode} {port_id}")
 
     def _parse_state_line(self, parts: list[str]) -> PortState:
+        # PDSync column order: port, voltage_10mV, current_mA, flags, time_s, energy_mwh_or_x, power_W
         def _int(v: str) -> int | None:
             try:
                 return int(v)
@@ -338,20 +339,20 @@ class CliClient(HubClient):
                 return None
 
         port_id = _int(parts[0]) or 0
-        current_ma = _int(parts[1])
-        flags = parts[2] if len(parts) > 2 else ""
+        voltage_10mv = _int(parts[1]) if len(parts) > 1 else None
+        current_ma = _int(parts[2]) if len(parts) > 2 else None
+        flags = set(parts[3].split()) if len(parts) > 3 else set()
         time_sec = _int(parts[4]) if len(parts) > 4 else None
-        energy_mwh = _int(parts[5]) if len(parts) > 5 else None
-        voltage_mv = _int(parts[6]) if len(parts) > 6 else None
+        energy_mwh = _int(parts[5]) if len(parts) > 5 else None  # 'x' → None
 
         mode = "off" if "O" in flags else ("sync" if "S" in flags else ("biased" if "B" in flags else "on"))
-        attached = "A" in flags
+        attached = "D" not in flags  # D = Detached flag
 
         return PortState(
             id=port_id,
             attached=attached,
             mode=mode,
-            voltage_v=voltage_mv / 1000.0 if voltage_mv is not None else None,
+            voltage_v=voltage_10mv / 100.0 if voltage_10mv is not None else None,
             current_ma=current_ma,
             charging_seconds=time_sec,
             energy_wh=energy_mwh / 1000.0 if energy_mwh is not None else None,
