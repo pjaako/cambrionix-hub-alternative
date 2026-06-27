@@ -62,7 +62,6 @@ class RestApiClient(HubClient):
         self._client = httpx.Client(timeout=5)
         self._hub: str | None = None
         self._modes: list[str] | None = None
-        self._version: str | None = None
 
     def hub_id(self) -> str:
         if not self._hub:
@@ -92,17 +91,11 @@ class RestApiClient(HubClient):
         ).raise_for_status().json()
         return self._parse(data["result"])
 
-    def _api_version(self) -> str:
-        if self._version is None:
-            data = self._client.get(f"{self._base}/details").raise_for_status().json()
-            self._version = data["result"]["semver"]
-        return self._version
-
     def set_mode(self, port_id: int, mode: str) -> None:
         hub = self.hub_id()
-        # v4.0.0 bug: POST mode "on" returns success but port stays off.
-        # Workaround: send firmware CLI command via /command endpoint.
-        if mode == "on" and self._api_version() == "4.0.0":
+        # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): POST mode "on"
+        # returns success but port stays off. Always use firmware CLI for "on".
+        if mode == "on":
             self._client.post(
                 f"{self._base}/hubs/{hub}/command",
                 content=f"mode c {port_id}\n",
