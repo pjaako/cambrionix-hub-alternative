@@ -63,6 +63,20 @@ Key files:
 - `models.py` — `PortState` dataclass (shared across all backends)
 - `templates/index.html`, `static/main.js` — frontend
 
+## Testing and Debugging
+
+`test_api.py` is the main diagnostic script:
+
+```bash
+source venv/bin/activate
+python test_api.py                                        # basic REST API smoke test
+python test_api.py backends                               # compare all three backends side-by-side
+python test_api.py port-info <port_id>                    # full state + supported modes for one port
+python test_api.py mode-test <port_id>                    # toggle off/on via JSON-RPC (bug diagnostic)
+python test_api.py fw-mode-test <hub_id> <port_id>        # toggle via firmware CLI
+python test_api.py sync-wakeup-test <hub_id> <port_id>    # nudge stuck-off port via sync
+```
+
 ## Documentation
 
 The primary API reference is served live by `CambrionixApiService` itself:
@@ -70,7 +84,9 @@ The primary API reference is served live by `CambrionixApiService` itself:
 - **Swagger UI**: `http://localhost:43424/api/v1/swagger`
 - **OpenAPI JSON**: `http://localhost:43424/openapi.json`
 
-The `docs/` directory contains an older v3.9 JSON-RPC reference, kept for historical context only.
+The `docs/` directory contains:
+- `docs/cambrionix-cli-reference/` — the official firmware CLI reference (commands, column formats, flag meanings). Active reference for `CliClient` development.
+- Older v3.9 JSON-RPC documentation, kept for historical context only.
 
 ## License
 

@@ -12,7 +12,7 @@ Always activate and use the virtual environment:
 
 ```bash
 source venv/bin/activate
-pip install -r requirements.txt  # once requirements.txt exists
+pip install -r requirements.txt
 ```
 
 ## Checking API accessibility
@@ -29,10 +29,15 @@ A healthy response returns the service version under `result.semver`. A connecti
 
 ```bash
 source venv/bin/activate
-python test_api.py
+python test_api.py                                        # basic REST API smoke test
+python test_api.py backends                               # compare all three backends side-by-side
+python test_api.py port-info <port_id>                    # full state + supported modes for one port
+python test_api.py mode-test <port_id>                    # toggle off/on via JSON-RPC (bug diagnostic)
+python test_api.py fw-mode-test <hub_id> <port_id>        # toggle via firmware CLI
+python test_api.py sync-wakeup-test <hub_id> <port_id>    # nudge stuck-off port via sync
 ```
 
-The script calls `check_api()` first and exits early with a clear message if the service is unreachable.
+The default invocation calls `check_api()` first and exits early with a clear message if the service is unreachable.
 
 ## Architecture
 
@@ -110,4 +115,16 @@ Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"bi
 
 ### Supported port modes
 
-The PDSync-C4 supports `on` and `off` only (fetched dynamically by `RestApiClient.supported_modes()`). `JsonRpcClient` and `CliClient` return `["on", "off", "sync", "biased"]` since those are all valid firmware CLI modes.
+All three backends determine supported modes dynamically from the hub's firmware class (`fc` field):
+
+| Firmware class (`fc`) | Hardware | Modes |
+|---|---|---|
+| `ps` | PDSync (e.g. PDSync-4) | `on`, `off` |
+| `sm` | SMART (TS3-C10) | `on`, `off` |
+| `un` | Universal | `on`, `off`, `sync`, `biased` |
+
+`RestApiClient` queries `GET /api/v1/hubs/{hubId}/ports/modes/supported`. `JsonRpcClient` reads the `Hardware` property and maps it through `_hw_to_fc()`. `CliClient` parses the `fc:` field from the `id` command. All three return `["on", "off"]` for a PDSync hub.
+
+### Hub ID
+
+The hub ID is the FTDI chip's USB serial number (e.g. `DK0F9SOT`), not the firmware `sn` field (which is zeroed on some hubs). `RestApiClient` and `JsonRpcClient` receive it directly from the service. `CliClient` reads it from the OS via `udevadm info` (`ID_SERIAL_SHORT`) for `SerialTransport`, or uses the stored hub ID for `ApiProxyTransport`.
