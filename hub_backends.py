@@ -18,6 +18,13 @@ _RPC_PORT = 43424
 _MODE_TO_CLI = {"on": "c", "off": "o", "sync": "s", "biased": "b"}
 _MODE_FROM_CLI = {"c": "on", "o": "off", "s": "sync", "b": "biased"}
 
+# Supported modes by firmware class (fc field from `id` command)
+_FC_MODES: dict[str, list[str]] = {
+    "un": ["on", "off", "sync", "biased"],  # Universal firmware
+    "ps": ["on", "off"],                     # PDSync firmware
+    "sm": ["on", "off"],                     # SMART firmware (TS3-C10)
+}
+
 
 class HubClient(ABC):
     @abstractmethod
@@ -277,23 +284,33 @@ class CliClient(HubClient):
     def __init__(self, transport: CliTransport, hub_serial: str | None = None):
         self._transport = transport
         self._hub_serial = hub_serial
+        self._fc: str | None = None
+        self._modes: list[str] | None = None
 
     def hub_id(self) -> str:
         if self._hub_serial is None:
-            raw = self._transport.send_command("id")
-            info: dict[str, str] = {}
-            for line in raw.splitlines():
-                if "mfr:" in line:
-                    for part in line.replace(">>", "").strip().split(","):
-                        if ":" in part:
-                            k, v = part.split(":", 1)
-                            info[k.strip()] = v.strip()
-                    break
-            self._hub_serial = info.get("sn", "unknown")
+            self._parse_id()
         return self._hub_serial
 
+    def _parse_id(self) -> None:
+        raw = self._transport.send_command("id")
+        info: dict[str, str] = {}
+        for line in raw.splitlines():
+            if "mfr:" in line:
+                for part in line.replace(">>", "").strip().split(","):
+                    if ":" in part:
+                        k, v = part.split(":", 1)
+                        info[k.strip()] = v.strip()
+                break
+        self._hub_serial = info.get("sn", "unknown")
+        self._fc = info.get("fc", "")
+
     def supported_modes(self) -> list[str]:
-        return ["on", "off", "sync", "biased"]
+        if self._modes is None:
+            if self._fc is None:
+                self._parse_id()
+            self._modes = _FC_MODES.get(self._fc, ["on", "off"])
+        return self._modes
 
     def get_ports(self) -> list[PortState]:
         raw = self._transport.send_command("state")
