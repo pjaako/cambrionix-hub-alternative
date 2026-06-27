@@ -258,7 +258,7 @@ class SerialTransport(CliTransport):
     def send_command(self, cmd: str) -> str:
         self._ensure_open()
         self._ser.reset_input_buffer()
-        self._ser.write(f"{cmd}\r".encode())
+        self._ser.write(f"{cmd}\r\n".encode())
         response = ""
         start = time.time()
         while True:
