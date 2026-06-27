@@ -18,12 +18,21 @@ _RPC_PORT = 43424
 _MODE_TO_CLI = {"on": "c", "off": "o", "sync": "s", "biased": "b"}
 _MODE_FROM_CLI = {"c": "on", "o": "off", "s": "sync", "b": "biased"}
 
-# Supported modes by firmware class (fc field from `id` command)
+# Supported modes by firmware class (fc field from `id` command / Hardware property)
 _FC_MODES: dict[str, list[str]] = {
     "un": ["on", "off", "sync", "biased"],  # Universal firmware
     "ps": ["on", "off"],                     # PDSync firmware
     "sm": ["on", "off"],                     # SMART firmware (TS3-C10)
 }
+
+
+def _hw_to_fc(hw: str) -> str:
+    """Derive firmware class from the Hardware property returned by JSON-RPC."""
+    if hw.startswith("PDSync"):
+        return "ps"
+    if hw == "TS3-C10":
+        return "sm"
+    return "un"
 
 
 class HubClient(ABC):
@@ -116,6 +125,7 @@ class JsonRpcClient(HubClient):
         self._handle: str | None = None
         self._unit: str | None = None
         self._req_id = 0
+        self._modes: list[str] | None = None
 
     def _connect(self) -> None:
         if self._sock is not None:
@@ -167,7 +177,11 @@ class JsonRpcClient(HubClient):
         return self._unit
 
     def supported_modes(self) -> list[str]:
-        return ["on", "off", "sync", "biased"]
+        if self._modes is None:
+            self._connect()
+            hw = self._get("Hardware") or ""
+            self._modes = _FC_MODES.get(_hw_to_fc(hw), ["on", "off"])
+        return self._modes
 
     def get_ports(self) -> list[PortState]:
         self._connect()
