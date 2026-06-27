@@ -264,6 +264,36 @@ def sync_wakeup_diagnostic(hub_id, port_id, host=HOST, port=PORT, pause=5):
     print(f"after on: {rest_get_port(hub_id, port_id, host, port)}")
 
 
+def port_info(port_id, host=HOST, port=PORT):
+    """Show full state and supported modes for a specific port across all three backends."""
+    from hub_backends import RestApiClient, JsonRpcClient, CliClient, ApiProxyTransport
+
+    ok, info = check_api(host, port)
+    if not ok:
+        print(f"CambrionixApiService not reachable at {host}:{port} — {info}")
+        return False
+    print(f"CambrionixApiService {info} reachable.\n")
+
+    rest = RestApiClient(f"http://{host}:{port}/api/v1")
+    rpc  = JsonRpcClient(host, port)
+    cli  = CliClient(ApiProxyTransport(rest.hub_id(), f"http://{host}:{port}/api/v1"))
+
+    backends = [("REST", rest), ("RPC ", rpc), ("CLI ", cli)]
+
+    print(f"--- port {port_id} state ---")
+    for label, b in backends:
+        p = b.get_port(port_id)
+        print(f"  {label}: attached={p.attached} mode={p.mode} "
+              f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+
+    print("\n--- supported modes ---")
+    for label, b in backends:
+        print(f"  {label}: {b.supported_modes()}")
+
+    rpc.close()
+    return True
+
+
 def test_backends(host=HOST, port=PORT):
     """Exercise all three HubClient backends and print a comparison of their output."""
     from hub_backends import RestApiClient, JsonRpcClient, CliClient, ApiProxyTransport
@@ -318,5 +348,7 @@ if __name__ == "__main__":
         sync_wakeup_diagnostic(sys.argv[2], int(sys.argv[3]))
     elif len(sys.argv) > 1 and sys.argv[1] == "backends":
         test_backends()
+    elif len(sys.argv) > 2 and sys.argv[1] == "port-info":
+        port_info(int(sys.argv[2]))
     else:
         test_cambrionix_api()
