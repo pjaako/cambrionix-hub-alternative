@@ -343,7 +343,12 @@ class CliClient(HubClient):
         current_ma = _int(parts[2]) if len(parts) > 2 else None
         flags = set(parts[3].split()) if len(parts) > 3 else set()
         time_sec = _int(parts[4]) if len(parts) > 4 else None
-        energy_mwh = _int(parts[5]) if len(parts) > 5 else None  # 'x' → None
+        # parts[5] = time_charged ('x' while still charging — skip)
+        energy_str = parts[6].strip() if len(parts) > 6 else None
+        try:
+            energy_wh = float(energy_str) if energy_str and energy_str != "x" else None
+        except ValueError:
+            energy_wh = None
 
         mode = "off" if "O" in flags else ("sync" if "S" in flags else ("biased" if "B" in flags else "on"))
         attached = "D" not in flags  # D = Detached flag
@@ -355,5 +360,5 @@ class CliClient(HubClient):
             voltage_v=voltage_10mv / 100.0 if voltage_10mv is not None else None,
             current_ma=current_ma,
             charging_seconds=time_sec,
-            energy_wh=energy_mwh / 1000.0 if energy_mwh is not None else None,
+            energy_wh=energy_wh,
         )
