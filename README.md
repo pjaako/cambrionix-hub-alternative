@@ -4,7 +4,7 @@ A Python-based application with a web GUI to control and log the charging proces
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.11+
 - Cambrionix Hub (with network or USB access for API calls)
 - [CambrionixApiService](https://connect.cambrionix.com) v4.0+ installed and running on the host machine
 
@@ -23,7 +23,6 @@ A Python-based application with a web GUI to control and log the charging proces
    ```
 
 3. **Install dependencies**:
-   *(Dependencies will be added as development progresses)*
    ```bash
    pip install -r requirements.txt
    ```
@@ -44,6 +43,25 @@ uvicorn app:app --reload
 ```
 
 Open `http://localhost:8000` in your browser. The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode can be set via the dropdown on each port card.
+
+## Architecture
+
+The app is built around a pluggable backend system in `hub_backends.py`. All three backends implement the same `HubClient` interface (`hub_id`, `supported_modes`, `get_ports`, `get_port`, `set_mode`):
+
+| Class | Protocol | Transport |
+|---|---|---|
+| `RestApiClient` | REST v4.0 | HTTP (`httpx`) |
+| `JsonRpcClient` | JSON-RPC v3.9 | TCP socket |
+| `CliClient` | Firmware CLI | `SerialTransport` (pyserial) or `ApiProxyTransport` (REST `/command` endpoint) |
+
+The web app (`app.py`) uses `RestApiClient` (aliased as `CambrionixClient` in `hub_client.py`). The other backends can be used directly in scripts or swapped in if needed.
+
+Key files:
+- `hub_backends.py` — `HubClient` ABC and all three backend implementations
+- `hub_client.py` — thin shim: `RestApiClient as CambrionixClient`
+- `app.py` — FastAPI routes
+- `models.py` — `PortState` dataclass (shared across all backends)
+- `templates/index.html`, `static/main.js` — frontend
 
 ## Documentation
 

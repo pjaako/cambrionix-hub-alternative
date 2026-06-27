@@ -4,50 +4,64 @@ This file provides context and instructions for AI agents working on the Cambrio
 
 ## Project Goal
 
-Build a Python web application (GUI) to monitor and control charging processes for devices connected to Cambrionix hubs.
+Build a Python web application (GUI) to monitor and control charging processes for devices connected to Cambrionix hubs via the Cambrionix Hub REST API (v4.0).
 
-## Technical Stack
+## Environment
 
-- **Language**: Python 3.8+
-- **Environment**: Python virtual environment (`venv/`) — always activate before running or installing anything
-- **GUI**: Web-based (framework TBD — Flask or FastAPI + frontend)
-- **API**: Cambrionix Hub **REST API v4.0** over HTTP
+Always activate and use the virtual environment:
 
-## API
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
-The application talks to `CambrionixApiService`, a locally installed daemon that listens on port `43424`. Use the **REST API** (`/api/v1/`) for all new development — not the legacy JSON-RPC interface.
+## Checking API accessibility
 
-### Checking the service is running
+Before running anything, confirm `CambrionixApiService` is up:
 
 ```bash
 curl -s http://localhost:43424/api/v1/details | python3 -m json.tool
 ```
 
-A healthy response returns `result.semver`. If the connection is refused, the service is not running (install from https://connect.cambrionix.com).
+A healthy response returns the service version under `result.semver`. A connection error means the service is not running. From Python, use `check_api()` in `test_api.py` which returns `(True, version)` or `(False, error)`.
 
-### API reference
+## Architecture
 
-The authoritative documentation is self-hosted by the running service:
+`CambrionixApiService` runs locally and exposes a **REST HTTP API (v4.0)** at `http://localhost:43424/api/v1/`. This is the API to use for all new development.
+
+Typical call pattern:
+1. `GET /api/v1/hubs` → list connected hubs (returns serial numbers)
+2. `GET /api/v1/hubs/{hubId}/ports` → all port states for a hub
+3. `GET /api/v1/hubs/{hubId}/ports/{portId}` → single port state
+4. `POST /api/v1/hubs/{hubId}/ports/{portId}/mode` → set port mode
+
+Port numbering note: port 0 is the hub's own FTDI serial interface, not a device port. Device ports start at 1.
+
+## API Reference
+
+The authoritative, always-current API reference is self-hosted by the running service:
 
 - **Swagger UI**: `http://localhost:43424/api/v1/swagger`
-- **OpenAPI JSON**: `http://localhost:43424/openapi.json` (45 endpoints; sub-specs and schemas resolve under the same host)
+- **OpenAPI JSON**: `http://localhost:43424/openapi.json` (45 endpoints, with per-endpoint sub-specs and schemas resolvable under the same host)
 
-Do not rely on the `docs/` folder as a reference — it documents the legacy JSON-RPC API (v3.9) and has known inaccuracies against the v4.0 service that is actually running.
+**Always fetch the live OpenAPI spec rather than relying on the local `docs/` folder.** The `docs/` directory contains a v3.9 JSON-RPC reference that is outdated and has known inaccuracies against the v4.0 service.
 
-### Key REST endpoints
+## Known issues
 
-- `GET /api/v1/hubs` — list connected hubs
-- `GET /api/v1/hubs/{hubId}/ports` — all port states
-- `GET /api/v1/hubs/{hubId}/ports/{portId}` — single port state
-- `POST /api/v1/hubs/{hubId}/ports/{portId}/mode` — set port mode
+See `bugs/README.md` for the full index. Summary:
 
-Port 0 is the hub's internal FTDI serial interface, not a device port. Device ports start at 1. Attachment state is exposed as a boolean field (`"attached": true/false`) in the port object, not via a flag character.
+- `GET /api/v1/hubs/{hubId}/ports/{portId}` does not return the `energy` field (`power.charge.charging.energy`) despite it being marked `required` in the OpenAPI schema (`Charging` and `Charged` types). Bug reported to Cambrionix; confirmed on firmware 1.0.4 and 1.3.0. As a workaround, `Port.N.Energy_Wh` is available via the legacy JSON-RPC interface (see `test_api.py`). Full report: `bugs/bug_report_rest_api_missing_energy_wh.md`.
+- `POST /api/v1/hubs/{hubId}/ports/{portId}/mode` with `{"mode": "off"}` works, but a subsequent call with `{"mode": "on"}` returns `{"result": true}` while the port state stays stuck on `"off"`. The port mode is effectively a one-way trip via this endpoint. The only confirmed port-scoped recovery is sending `mode c <portId>` to the hub's firmware CLI via `POST /api/v1/hubs/{hubId}/command`; a full hub reboot also works but disrupts every other port. Confirmed on firmware 1.3.0. Full report: `bugs/bug_report_rest_api_mode_off_unrecoverable.md`. Reproduction script: `bugs/reproduce_mode_off_bug.py`.
 
-### Known API bugs
+## Running the web app
 
-See `bugs/README.md` for the index of reported bugs and reproduction scripts.
+```bash
+source venv/bin/activate
+uvicorn app:app --reload
+# Open http://localhost:8000
+```
 
-`GET /api/v1/hubs/{hubId}/ports/{portId}` omits the `energy` field (`power.charge.charging.energy`) from its response despite it being marked `required` in the service's own OpenAPI schema (`Charging` and `Charged` types). Bug reported to Cambrionix; confirmed unfixed on firmware 1.0.4 and 1.3.0. See `bugs/bug_report_rest_api_missing_energy_wh.md` for the full report. As a workaround, energy is available via the legacy JSON-RPC interface — see `test_api.py` (`get_port_vitals`).
+The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode can be set via the dropdown on each port card.
 
 ## Running the test script
 
@@ -56,7 +70,44 @@ source venv/bin/activate
 python test_api.py
 ```
 
-`test_api.py` checks API accessibility first (`check_api()`), then discovers hubs and ports via JSON-RPC and prints voltage, current, energy, and charge time for any attached device. It will be superseded by the main application once development begins.
+The script calls `check_api()` first and exits early with a clear message if the service is unreachable.
+
+## Tech Stack
+
+- Language: Python 3.11+
+- Framework: FastAPI + Jinja2 + vanilla JS (polling)
+- Key files:
+  - `hub_backends.py` — `HubClient` ABC and all three backend implementations (see below)
+  - `hub_client.py` — thin shim: `RestApiClient as CambrionixClient`
+  - `app.py` — FastAPI routes
+  - `models.py` — `PortState` dataclass (shared across all backends)
+  - `templates/index.html`, `static/main.js` — frontend
+
+## Hub Backends
+
+All three backends implement the same `HubClient` interface defined in `hub_backends.py`:
+
+```
+hub_id() -> str
+supported_modes() -> list[str]
+get_ports() -> list[PortState]
+get_port(port_id: int) -> PortState
+set_mode(port_id: int, mode: str) -> None
+```
+
+| Class | Protocol | Notes |
+|---|---|---|
+| `RestApiClient` | REST v4.0 | Used by the web app; modes are `"on"`/`"off"` |
+| `JsonRpcClient` | JSON-RPC v3.9 | TCP socket to port 43424; lazy-connects, keeps socket alive; `get_ports()` uses `PortsInfo` for speed, `get_port()` fetches full vitals including energy |
+| `CliClient` | Firmware CLI | Takes a `CliTransport`: `SerialTransport` (pyserial over TTY) or `ApiProxyTransport` (proxies via `POST /api/v1/hubs/{hubId}/command`) |
+
+Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"biased"`. JSON-RPC and CLI translate to/from their native single-char codes (`c`/`o`/`s`/`b`) internally.
+
+`PortState.energy_wh` is populated by `JsonRpcClient` and `CliClient` but is always `None` from `RestApiClient` due to the known API bug.
+
+### Supported port modes
+
+The PDSync-C4 supports `on` and `off` only (fetched dynamically by `RestApiClient.supported_modes()`). `JsonRpcClient` and `CliClient` return `["on", "off", "sync", "biased"]` since those are all valid firmware CLI modes.
 
 ## Development Guidelines
 

@@ -76,9 +76,35 @@ The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode ca
 
 - Language: Python 3.11+
 - Framework: FastAPI + Jinja2 + vanilla JS (polling)
-- API transport: HTTP (REST via httpx)
-- Key files: `app.py` (routes), `hub_client.py` (API client), `models.py` (PortState dataclass), `templates/index.html`, `static/main.js`
+- Key files:
+  - `hub_backends.py` — `HubClient` ABC and all three backend implementations (see below)
+  - `hub_client.py` — thin shim: `RestApiClient as CambrionixClient`
+  - `app.py` — FastAPI routes
+  - `models.py` — `PortState` dataclass (shared across all backends)
+  - `templates/index.html`, `static/main.js` — frontend
+
+## Hub Backends
+
+All three backends implement the same `HubClient` interface defined in `hub_backends.py`:
+
+```
+hub_id() -> str
+supported_modes() -> list[str]
+get_ports() -> list[PortState]
+get_port(port_id: int) -> PortState
+set_mode(port_id: int, mode: str) -> None
+```
+
+| Class | Protocol | Notes |
+|---|---|---|
+| `RestApiClient` | REST v4.0 | Used by the web app; modes are `"on"`/`"off"` |
+| `JsonRpcClient` | JSON-RPC v3.9 | TCP socket to port 43424; lazy-connects, keeps socket alive; `get_ports()` uses `PortsInfo` for speed, `get_port()` fetches full vitals including energy |
+| `CliClient` | Firmware CLI | Takes a `CliTransport`: `SerialTransport` (pyserial over TTY) or `ApiProxyTransport` (proxies via `POST /api/v1/hubs/{hubId}/command`) |
+
+Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"biased"`. JSON-RPC and CLI translate to/from their native single-char codes (`c`/`o`/`s`/`b`) internally.
+
+`PortState.energy_wh` is populated by `JsonRpcClient` and `CliClient` but is always `None` from `RestApiClient` due to the known API bug.
 
 ### Supported port modes
 
-The hub advertises its supported modes via `GET /api/v1/hubs/{hubId}/ports/modes/supported`. The PDSync-C4 supports `on` and `off` only. `charge` and `detect` are legacy-hub-only modes. The app fetches supported modes dynamically at startup via `CambrionixClient.supported_modes()`.
+The PDSync-C4 supports `on` and `off` only (fetched dynamically by `RestApiClient.supported_modes()`). `JsonRpcClient` and `CliClient` return `["on", "off", "sync", "biased"]` since those are all valid firmware CLI modes.

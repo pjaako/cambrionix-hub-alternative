@@ -9,3 +9,4 @@ class PortState:
     voltage_v: float | None
     current_ma: int | None
     charging_seconds: int | None
+    energy_wh: float | None = None
