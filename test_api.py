@@ -264,6 +264,51 @@ def sync_wakeup_diagnostic(hub_id, port_id, host=HOST, port=PORT, pause=5):
     print(f"after on: {rest_get_port(hub_id, port_id, host, port)}")
 
 
+def test_backends(host=HOST, port=PORT):
+    """Exercise all three HubClient backends and print a comparison of their output."""
+    from hub_backends import RestApiClient, JsonRpcClient, CliClient, ApiProxyTransport
+
+    ok, info = check_api(host, port)
+    if not ok:
+        print(f"CambrionixApiService not reachable at {host}:{port} — {info}")
+        return False
+    print(f"CambrionixApiService {info} reachable.\n")
+
+    rest = RestApiClient(f"http://{host}:{port}/api/v1")
+    rpc = JsonRpcClient(host, port)
+    cli = CliClient(ApiProxyTransport(rest.hub_id(), f"http://{host}:{port}/api/v1"))
+
+    backends = [("REST", rest), ("RPC ", rpc), ("CLI ", cli)]
+
+    print("--- hub_id ---")
+    for label, b in backends:
+        print(f"  {label}: {b.hub_id()}")
+
+    print("\n--- supported_modes ---")
+    for label, b in backends:
+        print(f"  {label}: {b.supported_modes()}")
+
+    print("\n--- get_ports ---")
+    for label, b in backends:
+        ports = b.get_ports()
+        print(f"  {label}:")
+        for p in ports:
+            print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
+                  f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+
+    attached_ids = [p.id for p in rest.get_ports() if p.attached]
+    if attached_ids:
+        port_id = attached_ids[0]
+        print(f"\n--- get_port({port_id}) ---")
+        for label, b in backends:
+            p = b.get_port(port_id)
+            print(f"  {label}: attached={p.attached} mode={p.mode} "
+                  f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+
+    rpc.close()
+    return True
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "mode-test":
         mode_toggle_diagnostic(int(sys.argv[2]))
@@ -271,5 +316,7 @@ if __name__ == "__main__":
         firmware_mode_toggle_diagnostic(sys.argv[2], int(sys.argv[3]))
     elif len(sys.argv) > 1 and sys.argv[1] == "sync-wakeup-test":
         sync_wakeup_diagnostic(sys.argv[2], int(sys.argv[3]))
+    elif len(sys.argv) > 1 and sys.argv[1] == "backends":
+        test_backends()
     else:
         test_cambrionix_api()
