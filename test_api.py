@@ -299,7 +299,13 @@ def port_info(port_id):
 
 def test_backends():
     """Exercise all four HubClient backends, each printed in full before the next.
-    CLI/serial runs last — direct serial access can disrupt the service."""
+    """
+    print(
+        "Note: CLI/serial requires the CambrionixApiService to be stopped (exclusive serial access).\n"
+        "REST, RPC, and CLI/http require it to be running.\n"
+        "At least one backend is expected to fail on every run.\n"
+    )
+
     from hub_backends import RestApiClient, JsonRpcClient, CliClient
 
     backends = [
