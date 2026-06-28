@@ -58,7 +58,11 @@ The authoritative, always-current API reference is self-hosted by the running se
 - **Swagger UI**: `http://localhost:43424/api/v1/swagger`
 - **OpenAPI JSON**: `http://localhost:43424/openapi.json` (45 endpoints, with per-endpoint sub-specs and schemas resolvable under the same host)
 
-**Always fetch the live OpenAPI spec rather than relying on the local `docs/` folder.** The `docs/` directory contains a v3.9 JSON-RPC reference that is outdated and has known inaccuracies against the v4.0 service.
+**Always fetch the live OpenAPI spec rather than relying on the local `docs/` folder.** The `docs/` directory contains:
+- `docs/cambrionix-cli-reference/` — **active** firmware CLI reference (commands, column formats, flag meanings). Use this when working on `CliClient`.
+- Older v3.9 JSON-RPC documentation — outdated and has known inaccuracies against the v4.0 service.
+
+`deref_openapi.py` is a utility that fetches the fragmented OpenAPI spec and resolves all `$ref` sub-specs into a single flat JSON file (useful for MCP tools): `python deref_openapi.py` → writes `cambrionix_openapi_flat.json`.
 
 ## Known issues
 
@@ -91,6 +95,10 @@ The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode ca
   - `models.py` — `PortState` dataclass (shared across all backends)
   - `templates/index.html`, `static/main.js` — frontend
 
+**`hub.py` is legacy code** — a low-level `CambrionixHub` class that predates `hub_backends.py`. It is not used by the app or any tests. Do not use it; it also contains the `\r`-only terminator bug that causes hub unresponsive state (see Known issues).
+
+There is no formal test framework (no pytest). `test_api.py` is a standalone diagnostic/smoke-test script with a manual CLI dispatch (`if __name__ == "__main__"`).
+
 ## Hub Backends
 
 All three backends implement the same `HubClient` interface defined in `hub_backends.py`:
@@ -110,6 +118,33 @@ set_mode(port_id: int, mode: str) -> None
 | `CliClient` | Firmware CLI | Use `CliClient.via_serial(tty)` for direct serial or `CliClient.via_http(hub_id)` to proxy through the REST service |
 
 Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"biased"`. JSON-RPC and CLI translate to/from their native single-char codes (`c`/`o`/`s`/`b`) internally.
+
+### CliClient transport layer
+
+`CliClient` is split into two layers: a `CliTransport` ABC (defines `send_command(cmd) -> str`) and the `CliClient` hub logic on top. Two transports exist:
+
+- `SerialTransport` — opens the TTY directly, sends `cmd\r\n`, reads until `>>` prompt
+- `ApiProxyTransport` — sends `POST /api/v1/hubs/{hubId}/command` with plain-text body; hub serial is the hub ID passed at construction
+
+The named constructors `CliClient.via_serial()` and `CliClient.via_http()` select the transport. `SerialTransport.hub_serial()` calls `udevadm info` to read `ID_SERIAL_SHORT`; `ApiProxyTransport.hub_serial()` returns the stored hub ID.
+
+### JsonRpcClient connection lifecycle
+
+`JsonRpcClient` lazy-connects on first use (`_connect()`). Connection sequence: open TCP socket → `cbrx_discover` → `cbrx_connection_open(unit)` → returns a `handle`. All subsequent `cbrx_connection_get/set` calls pass this handle. The socket is kept alive across calls (`_sock` stored on instance). Call `close()` to release it. Batch RPC (`_rpc_batch()`) sends a JSON array in one socket write and parses the array response.
+
+### Port state flags
+
+Both `CliClient` and `JsonRpcClient` decode flags from the `state` command / `PortsInfo.Flags`:
+
+| Flag | Meaning |
+|------|---------|
+| `O`  | Off |
+| `D`  | Detached |
+| `S`  | Sync mode |
+| `B`  | Biased mode |
+| absence of O/S/B | On (charging) |
+
+The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W`. `energy_Wh` is in column index 6 (0-based); `"x"` means still charging (treated as `None`).
 
 `PortState.energy_wh` is populated by all three backends. `RestApiClient` fetches it via a firmware CLI `state` command through the `/command` proxy (workaround for a known REST API bug — see Known issues).
 
