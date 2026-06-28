@@ -297,41 +297,10 @@ def port_info(port_id):
     return True
 
 
-def test_backends(host=HOST, port=PORT):
+def test_backends():
     """Exercise all four HubClient backends, each printed in full before the next.
     CLI/serial runs last — direct serial access can disrupt the service."""
     from hub_backends import RestApiClient, JsonRpcClient, CliClient
-
-    ok, info = check_api(host, port)
-    print(f"CambrionixApiService: {info if ok else 'not reachable — ' + info}\n")
-
-    def _run(label, b):
-        print(f"=== {label} ===")
-        try:
-            print(f"  hub_id:          {b.hub_id}")
-            print(f"  supported_modes: {b.supported_modes()}")
-            ports = b.get_ports()
-            print(f"  get_ports:")
-            for p in ports:
-                print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
-                      f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
-            attached = next((p.id for p in ports if p.attached), None)
-            if attached is not None:
-                p = b.get_port(attached)
-                print(f"  get_port({attached}): attached={p.attached} mode={p.mode} "
-                      f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
-        except Exception as e:
-            print(f"  FAILED: {e}")
-        print()
-
-    def _discover(label, fn, fmt=lambda h: h.hub_id):
-        try:
-            hubs = fn()
-            print(f"{label} discover: {[fmt(h) for h in hubs]}\n")
-            return hubs
-        except Exception as e:
-            print(f"{label} discover failed: {e}\n")
-            return []
 
     backends = [
         ("REST",       RestApiClient.discover),
@@ -342,9 +311,30 @@ def test_backends(host=HOST, port=PORT):
 
     all_hubs = []
     for label, discover_fn in backends:
-        hubs = _discover(label, discover_fn)
+        try:
+            hubs = discover_fn()
+            print(f"{label} discover: {[h.hub_id for h in hubs]}\n")
+        except Exception as e:
+            print(f"{label} discover failed: {e}\n")
+            hubs = []
         for hub in hubs:
-            _run(f"{label} [{hub.hub_id}]", hub)
+            print(f"=== {label} [{hub.hub_id}] ===")
+            try:
+                print(f"  hub_id:          {hub.hub_id}")
+                print(f"  supported_modes: {hub.supported_modes()}")
+                ports = hub.get_ports()
+                print(f"  get_ports:")
+                for p in ports:
+                    print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
+                          f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+                attached = next((p.id for p in ports if p.attached), None)
+                if attached is not None:
+                    p = hub.get_port(attached)
+                    print(f"  get_port({attached}): attached={p.attached} mode={p.mode} "
+                          f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+            except Exception as e:
+                print(f"  FAILED: {e}")
+            print()
         all_hubs.extend(hubs)
 
     for hub in all_hubs:
