@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| CambrionixApiService version | 4.0.0 |
+| CambrionixApiService version | 4.0.0 → **4.0.1 (still affected)** |
 | OS | Debian GNU/Linux 13 (trixie), x64 |
 | Hub | PDSync-C4, serial `DK0F9SOT`, firmware 1.3.0 |
 
@@ -131,6 +131,6 @@ Any application built on this REST API that exposes an "off" control (as this pr
 
 ## Workaround
 
-A full hub reboot (`POST /api/v1/hubs/{hubId}/reboot`) restores the port but interrupts every other attached device on that hub.
+**Implemented in `RestApiClient` (this project):** `set_mode(port_id, "on")` bypasses the broken REST endpoint entirely and sends `mode c <portId>` to the hub's firmware CLI via `POST /api/v1/hubs/{hubId}/command`. This is the same mechanism confirmed in the isolation test above. No version check is applied — the bug persists across at least 4.0.0 and 4.0.1, and a narrower check would silently break if a future version still carries the bug. The `"off"` path continues to use the normal REST endpoint, which works correctly.
 
-A better, port-scoped workaround exists: send `mode c <portId>` directly to the hub's firmware CLI via `POST /api/v1/hubs/{hubId}/command` (see isolation test above). This restores the single port without touching any other port or rebooting the hub, and confirms the REST mode endpoint — not the firmware — is where the fix is needed.
+A full hub reboot (`POST /api/v1/hubs/{hubId}/reboot`) also restores the port but interrupts every other attached device on that hub.

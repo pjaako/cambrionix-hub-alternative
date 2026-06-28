@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| CambrionixApiService version | 4.0.0 (build 1227) |
+| CambrionixApiService version | 4.0.0 (build 1227) → **4.0.1 (still affected)** |
 | Commit | `74288a86d3d64cc9ff6c9c8729540c8e80e503f1` |
 | Branch | release |
 | OS | Debian GNU/Linux 13 (trixie), x64 |
@@ -132,4 +132,6 @@ Energy tracking per charging session is the primary use case for third-party app
 
 ## Workaround
 
-Query `Port.N.Energy_Wh` via JSON-RPC over TCP on port 43424 in parallel with REST API calls.
+**Implemented in `RestApiClient` (this project):** `_fetch_energies()` sends a `state` command to the hub's firmware CLI via `POST /api/v1/hubs/{hubId}/command` and parses the energy column (`parts[6]`, Wh as float) for all ports in a single request. The result is merged into the REST response in `get_ports()` and `get_port()`. This workaround will remain active until the REST API is fixed — no version check is applied since the bug persists across at least 4.0.0 and 4.0.1.
+
+Alternative without using this project: query `Port.N.Energy_Wh` via JSON-RPC over TCP on port 43424 in parallel with REST API calls.

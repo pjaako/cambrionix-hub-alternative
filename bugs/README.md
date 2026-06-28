@@ -7,8 +7,8 @@ where one exists.
 
 | Report | Summary | Workaround |
 |---|---|---|
-| [bug_report_rest_api_missing_energy_wh.md](bug_report_rest_api_missing_energy_wh.md) | `GET .../ports/{portId}` omits the `energy` field required by its own OpenAPI schema. | Read `Port.N.Energy_Wh` via the legacy JSON-RPC interface instead (see `test_api.py`, `get_port_vitals`). |
-| [bug_report_rest_api_mode_off_unrecoverable.md](bug_report_rest_api_mode_off_unrecoverable.md) | `POST .../ports/{portId}/mode {"mode":"off"}` works, but a follow-up `{"mode":"on"}` reports success while the port stays off. Root-caused to the service layer, not the firmware. | Send `mode c <portId>` to the hub's firmware CLI via `POST /api/v1/hubs/{hubId}/command` (port-scoped); a full hub reboot also works but disrupts every other port. |
+| [bug_report_rest_api_missing_energy_wh.md](bug_report_rest_api_missing_energy_wh.md) | `GET .../ports/{portId}` omits the `energy` field required by its own OpenAPI schema. Confirmed ≥4.0.0, still present in 4.0.1. | **Implemented:** `RestApiClient._fetch_energies()` sends a `state` CLI command via `/command` and merges the result into REST responses. |
+| [bug_report_rest_api_mode_off_unrecoverable.md](bug_report_rest_api_mode_off_unrecoverable.md) | `POST .../ports/{portId}/mode {"mode":"on"}` reports success while the port stays off after a prior `"off"`. Root-caused to the service layer, not the firmware. Confirmed ≥4.0.0, still present in 4.0.1. | **Implemented:** `RestApiClient.set_mode("on")` bypasses the broken endpoint and sends `mode c <portId>` via the firmware CLI `/command` proxy directly. |
 
 ## Reproduction scripts
 
