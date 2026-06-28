@@ -264,21 +264,22 @@ def sync_wakeup_diagnostic(hub_id, port_id, host=HOST, port=PORT, pause=5):
     print(f"after on: {rest_get_port(hub_id, port_id, host, port)}")
 
 
-def port_info(port_id, host=HOST, port=PORT):
+def port_info(port_id):
     """Show full state and supported modes for a specific port across all three backends."""
     from hub_backends import RestApiClient, JsonRpcClient, CliClient
 
-    ok, info = check_api(host, port)
+    ok, info = check_api()
     if not ok:
-        print(f"CambrionixApiService not reachable at {host}:{port} — {info}")
+        print(f"CambrionixApiService not reachable — {info}")
         return False
     print(f"CambrionixApiService {info} reachable.\n")
 
-    rest = RestApiClient(f"http://{host}:{port}/api/v1")
-    rpc  = JsonRpcClient(host, port)
-    cli  = CliClient.via_http(rest.hub_id, f"http://{host}:{port}/api/v1")
-
-    backends = [("REST", rest), ("RPC ", rpc), ("CLI ", cli)]
+    rest = RestApiClient()
+    backends = [
+        ("REST", rest),
+        ("RPC",  JsonRpcClient()),
+        ("CLI",  CliClient.via_http(rest.hub_id)),
+    ]
 
     print(f"--- port {port_id} state ---")
     for label, b in backends:
@@ -290,7 +291,9 @@ def port_info(port_id, host=HOST, port=PORT):
     for label, b in backends:
         print(f"  {label}: {b.supported_modes()}")
 
-    rpc.close()
+    for _, b in backends:
+        if hasattr(b, "close"):
+            b.close()
     return True
 
 
