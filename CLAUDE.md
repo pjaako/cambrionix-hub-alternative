@@ -25,20 +25,6 @@ curl -s http://localhost:43424/api/v1/details | python3 -m json.tool
 
 A healthy response returns the service version under `result.semver`. A connection error means the service is not running. From Python, use `check_api()` in `test_api.py` which returns `(True, version)` or `(False, error)`.
 
-## Running the test script
-
-```bash
-source venv/bin/activate
-python test_api.py                                        # basic REST API smoke test
-python test_api.py backends                               # compare all three backends side-by-side
-python test_api.py port-info <port_id>                    # full state + supported modes for one port
-python test_api.py mode-test <port_id>                    # toggle off/on via JSON-RPC (bug diagnostic)
-python test_api.py fw-mode-test <hub_id> <port_id>        # toggle via firmware CLI
-python test_api.py sync-wakeup-test <hub_id> <port_id>    # nudge stuck-off port via sync
-```
-
-The default invocation calls `check_api()` first and exits early with a clear message if the service is unreachable.
-
 ## Architecture
 
 `CambrionixApiService` runs locally and exposes a **REST HTTP API (v4.0)** at `http://localhost:43424/api/v1/`. This is the API to use for all new development.
@@ -83,6 +69,20 @@ uvicorn app:app --reload
 ```
 
 The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode can be set via the dropdown on each port card.
+
+## Running the test script
+
+```bash
+source venv/bin/activate
+python test_api.py                                        # basic REST API smoke test
+python test_api.py backends                               # compare all three backends side-by-side
+python test_api.py port-info <port_id>                    # full state + supported modes for one port
+python test_api.py mode-test <port_id>                    # toggle off/on via JSON-RPC (bug diagnostic)
+python test_api.py fw-mode-test <hub_id> <port_id>        # toggle via firmware CLI
+python test_api.py sync-wakeup-test <hub_id> <port_id>    # nudge stuck-off port via sync
+```
+
+The default invocation calls `check_api()` first and exits early with a clear message if the service is unreachable.
 
 ## Tech Stack
 
