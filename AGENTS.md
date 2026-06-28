@@ -182,3 +182,4 @@ The hub ID is the FTDI chip's USB serial number (e.g. `DK0F9SOT`), not the firmw
 - Consult the live OpenAPI spec before implementing any API call
 - Keep changes focused and minimal; do not refactor code outside the scope of the current task
 - Commit messages should be concise and explain *why*, not just *what*
+- Every commit must include a `Co-Authored-By` line crediting the agent that made the change (using that agent's own name and contact).

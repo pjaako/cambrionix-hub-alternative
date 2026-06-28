@@ -175,3 +175,7 @@ All three backends determine supported modes dynamically from the hub's firmware
 ### Hub ID
 
 The hub ID is the FTDI chip's USB serial number (e.g. `DK0F9SOT`), not the firmware `sn` field (which is zeroed on some hubs). `RestApiClient` and `JsonRpcClient` receive it directly from the service. `CliClient` reads it from the OS via `udevadm info` (`ID_SERIAL_SHORT`) for `SerialTransport`, or uses the stored hub ID for `ApiProxyTransport`.
+
+## Commit conventions
+
+Every commit must include a `Co-Authored-By` line crediting the agent that made the change (using that agent's own name and contact).
