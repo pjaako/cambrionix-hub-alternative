@@ -295,8 +295,8 @@ def port_info(port_id, host=HOST, port=PORT):
 
 
 def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
-    """Exercise all three HubClient backends, each printed in full before the next.
-    CLI backend (SerialTransport) runs last — direct serial access can disrupt the service."""
+    """Exercise all four HubClient backends, each printed in full before the next.
+    CLI/serial runs last — direct serial access can disrupt the service."""
     from hub_backends import RestApiClient, JsonRpcClient, CliClient
 
     ok, info = check_api(host, port)
@@ -304,10 +304,16 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
 
     rest = RestApiClient(f"http://{host}:{port}/api/v1")
     rpc = JsonRpcClient(host, port)
-    cli = CliClient.via_serial(tty)
+    cli_http = CliClient.via_http(rest.hub_id(), f"http://{host}:{port}/api/v1") if ok else None
+    cli_serial = CliClient.via_serial(tty)
+
+    backends = [("REST", rest), ("RPC", rpc)]
+    if cli_http is not None:
+        backends.append(("CLI/http", cli_http))
+    backends.append(("CLI/serial", cli_serial))
 
     attached_id = None
-    for label, b in [("REST", rest), ("RPC", rpc), ("CLI", cli)]:
+    for label, b in backends:
         print(f"=== {label} ===")
         try:
             print(f"  hub_id:          {b.hub_id()}")
