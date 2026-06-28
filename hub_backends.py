@@ -306,24 +306,20 @@ class JsonRpcClient(HubClient):
 
     def get_port(self, port_id: int) -> PortState:
         self._connect()
-        n = port_id
-        mode_char = self._get(f"Port.{n}.Mode") or ""
-        attached = self._get(f"Port.{n}.Attached") or False
-        current_ma = self._get(f"Port.{n}.Current_mA")
-        energy_wh = self._get(f"Port.{n}.Energy_Wh")
-        time_sec = self._get(f"Port.{n}.TimeCharging_sec")
-        raw_10mv = self._get(f"Port.{n}.Voltage_10mV")
-        voltage_v = round(raw_10mv / 100.0, 2) if raw_10mv is not None else None
-        energy_wh = round(energy_wh, 2) if energy_wh is not None else None
-        return PortState(
-            id=port_id,
-            attached=attached,
-            mode=_MODE_FROM_CLI.get(mode_char, "unknown"),
-            voltage_v=voltage_v,
-            current_ma=current_ma,
-            charging_seconds=time_sec,
-            energy_wh=energy_wh,
-        )
+        ports_info = self._get("PortsInfo") or {}
+        info = next((i for i in ports_info.values() if i.get("Port") == port_id), None)
+        if info is None:
+            raise RuntimeError(f"Port {port_id} not found")
+        props = ["Voltage_10mV", "TimeCharging_sec", "Energy_Wh"]
+        v10mv, time_sec, energy_wh = self._rpc_batch([
+            ("cbrx_connection_get", [self._handle, f"Port.{port_id}.{prop}"])
+            for prop in props
+        ])
+        return self._parse_ports_info(info, {
+            "voltage_v": round(v10mv / 100.0, 2) if v10mv is not None else None,
+            "charging_seconds": time_sec,
+            "energy_wh": round(energy_wh, 2) if energy_wh is not None else None,
+        })
 
     def set_mode(self, port_id: int, mode: str) -> None:
         self._connect()

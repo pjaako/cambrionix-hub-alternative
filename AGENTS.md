@@ -117,6 +117,8 @@ set_mode(port_id: int, mode: str) -> None
 | `JsonRpcClient` | JSON-RPC v3.9 | TCP socket to port 43424; lazy-connects, keeps socket alive; `get_ports()` uses `PortsInfo` + batch RPC for speed, `get_port()` fetches full vitals including energy |
 | `CliClient` | Firmware CLI | Use `CliClient.via_serial(tty)` for direct serial or `CliClient.via_http(hub_id)` to proxy through the REST service |
 
+Backend selection tradeoffs (service dependency, hub scope, security) are documented in `README.md` under "Which backend to use?".
+
 Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"biased"`. JSON-RPC and CLI translate to/from their native single-char codes (`c`/`o`/`s`/`b`) internally.
 
 ### CliClient transport layer
