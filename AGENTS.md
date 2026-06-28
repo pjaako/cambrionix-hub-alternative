@@ -155,7 +155,7 @@ Each backend provides a classmethod to enumerate available hubs:
 ```python
 RestApiClient.discover(base)      # GET /hubs — returns list[RestApiClient]
 JsonRpcClient.discover(host, port)# cbrx_discover — returns list[JsonRpcClient]
-CliClient.discover_serial()       # scans USB serial ports by FTDI VID — returns list[CliClient]
+CliClient.discover_serial()       # probes all USB serial ports, confirms via `id` command — returns list[CliClient]
 ```
 
 Returned instances have hub identity pre-seeded (no extra network/serial call on first use).
@@ -174,7 +174,7 @@ All three backends determine supported modes dynamically from the hub's firmware
 
 ### Hub ID
 
-The hub ID is the FTDI chip's USB serial number (e.g. `DK0F9SOT`), not the firmware `sn` field (which is zeroed on some hubs). `RestApiClient` and `JsonRpcClient` receive it directly from the service. `CliClient` reads it from the OS via `udevadm info` (`ID_SERIAL_SHORT`) for `SerialTransport`, or uses the stored hub ID for `ApiProxyTransport`.
+The hub ID is the USB serial number assigned by the OS (e.g. `DK0F9SOT`), not the firmware `sn` field (which is zeroed on some hubs). `RestApiClient` and `JsonRpcClient` receive it directly from the service. `CliClient` reads it from the OS via `udevadm info` (`ID_SERIAL_SHORT`) for `SerialTransport`, or uses the stored hub ID for `ApiProxyTransport`.
 
 ## Development Guidelines
 
