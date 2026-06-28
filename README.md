@@ -48,11 +48,13 @@ Open `http://localhost:8000` in your browser. The app polls `/api/ports` every 2
 
 The app is built around a pluggable backend system in `hub_backends.py`. All three backends implement the same `HubClient` interface (`hub_id`, `supported_modes`, `get_ports`, `get_port`, `set_mode`):
 
-| Class | Protocol | Transport |
+| Class | Protocol | Instantiation |
 |---|---|---|
-| `RestApiClient` | REST v4.0 | HTTP (`httpx`) |
-| `JsonRpcClient` | JSON-RPC v3.9 | TCP socket |
-| `CliClient` | Firmware CLI | `SerialTransport` (pyserial) or `ApiProxyTransport` (REST `/command` endpoint) |
+| `RestApiClient` | REST v4.0 | `RestApiClient()` or `RestApiClient.discover()` |
+| `JsonRpcClient` | JSON-RPC v3.9 | `JsonRpcClient()` or `JsonRpcClient.discover()` |
+| `CliClient` | Firmware CLI | `CliClient.via_serial(tty)` / `CliClient.via_http(hub_id)` / `CliClient.discover_serial()` |
+
+All three expose the same `HubClient` interface: `hub_id()`, `supported_modes()`, `get_ports()`, `get_port()`, `set_mode()`. The `discover()` classmethods return a list of ready-to-use instances, one per connected hub.
 
 The web app (`app.py`) uses `RestApiClient` (aliased as `CambrionixClient` in `hub_client.py`). The other backends can be used directly in scripts or swapped in if needed.
 

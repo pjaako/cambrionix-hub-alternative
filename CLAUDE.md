@@ -106,12 +106,24 @@ set_mode(port_id: int, mode: str) -> None
 | Class | Protocol | Notes |
 |---|---|---|
 | `RestApiClient` | REST v4.0 | Used by the web app; modes are `"on"`/`"off"` |
-| `JsonRpcClient` | JSON-RPC v3.9 | TCP socket to port 43424; lazy-connects, keeps socket alive; `get_ports()` uses `PortsInfo` for speed, `get_port()` fetches full vitals including energy |
-| `CliClient` | Firmware CLI | Takes a `CliTransport`: `SerialTransport` (pyserial over TTY) or `ApiProxyTransport` (proxies via `POST /api/v1/hubs/{hubId}/command`) |
+| `JsonRpcClient` | JSON-RPC v3.9 | TCP socket to port 43424; lazy-connects, keeps socket alive; `get_ports()` uses `PortsInfo` + batch RPC for speed, `get_port()` fetches full vitals including energy |
+| `CliClient` | Firmware CLI | Use `CliClient.via_serial(tty)` for direct serial or `CliClient.via_http(hub_id)` to proxy through the REST service |
 
 Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"biased"`. JSON-RPC and CLI translate to/from their native single-char codes (`c`/`o`/`s`/`b`) internally.
 
 `PortState.energy_wh` is populated by all three backends. `RestApiClient` fetches it via a firmware CLI `state` command through the `/command` proxy (workaround for a known REST API bug — see Known issues).
+
+### Discovery
+
+Each backend provides a classmethod to enumerate available hubs:
+
+```python
+RestApiClient.discover(base)      # GET /hubs — returns list[RestApiClient]
+JsonRpcClient.discover(host, port)# cbrx_discover — returns list[JsonRpcClient]
+CliClient.discover_serial()       # scans USB serial ports by FTDI VID — returns list[CliClient]
+```
+
+Returned instances have hub identity pre-seeded (no extra network/serial call on first use).
 
 ### Supported port modes
 
