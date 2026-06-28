@@ -298,6 +298,7 @@ class JsonRpcClient(HubClient):
         self._connect()
         n = port_id
         mode_char = self._get(f"Port.{n}.Mode") or ""
+        attached = self._get(f"Port.{n}.Attached") or False
         current_ma = self._get(f"Port.{n}.Current_mA")
         energy_wh = self._get(f"Port.{n}.Energy_Wh")
         time_sec = self._get(f"Port.{n}.TimeCharging_sec")
@@ -306,7 +307,7 @@ class JsonRpcClient(HubClient):
         energy_wh = round(energy_wh, 2) if energy_wh is not None else None
         return PortState(
             id=port_id,
-            attached=(current_ma or 0) > 0,
+            attached=attached,
             mode=_MODE_FROM_CLI.get(mode_char, "unknown"),
             voltage_v=voltage_v,
             current_ma=current_ma,
