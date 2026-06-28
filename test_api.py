@@ -276,7 +276,7 @@ def port_info(port_id, host=HOST, port=PORT):
 
     rest = RestApiClient(f"http://{host}:{port}/api/v1")
     rpc  = JsonRpcClient(host, port)
-    cli  = CliClient.via_http(rest.hub_id(), f"http://{host}:{port}/api/v1")
+    cli  = CliClient.via_http(rest.hub_id, f"http://{host}:{port}/api/v1")
 
     backends = [("REST", rest), ("RPC ", rpc), ("CLI ", cli)]
 
@@ -304,17 +304,10 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
 
     base = f"http://{host}:{port}/api/v1"
 
-    rest_hubs = []
-    rpc_hubs = []
-    serial_hubs = []
-
-    def _run(label, b, discover_fn=None, discover_fmt=None):
+    def _run(label, b):
         print(f"=== {label} ===")
         try:
-            if discover_fn is not None:
-                found = discover_fn()
-                print(f"  discover:        {discover_fmt(found)}")
-            print(f"  hub_id:          {b.hub_id()}")
+            print(f"  hub_id:          {b.hub_id}")
             print(f"  supported_modes: {b.supported_modes()}")
             ports = b.get_ports()
             print(f"  get_ports:")
@@ -330,37 +323,33 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
             print(f"  FAILED: {e}")
         print()
 
-    try:
-        rest_hubs = RestApiClient.discover(base)
-    except Exception:
-        pass
-    rest = rest_hubs[0] if rest_hubs else RestApiClient(base)
-    _run("REST", rest,
-         discover_fn=lambda: RestApiClient.discover(base),
-         discover_fmt=lambda hubs: [h.hub_id() for h in hubs])
+    def _discover(label, fn, fmt=lambda h: h.hub_id):
+        try:
+            hubs = fn()
+            print(f"{label} discover: {[fmt(h) for h in hubs]}\n")
+            return hubs
+        except Exception as e:
+            print(f"{label} discover failed: {e}\n")
+            return []
 
-    try:
-        rpc_hubs = JsonRpcClient.discover(host, port)
-    except Exception:
-        pass
-    rpc = rpc_hubs[0] if rpc_hubs else JsonRpcClient(host, port)
-    _run("RPC", rpc,
-         discover_fn=lambda: JsonRpcClient.discover(host, port),
-         discover_fmt=lambda hubs: [h.hub_id() for h in hubs])
+    rest_hubs = _discover("REST", lambda: RestApiClient.discover(base))
+    for hub in rest_hubs:
+        _run(f"REST [{hub.hub_id}]", hub)
+
+    rpc_hubs = _discover("RPC", lambda: JsonRpcClient.discover(host, port))
+    for hub in rpc_hubs:
+        _run(f"RPC [{hub.hub_id}]", hub)
 
     if ok:
-        _run("CLI/http", CliClient.via_http(rest.hub_id(), base))
+        for hub in rest_hubs:
+            _run(f"CLI/http [{hub.hub_id}]", CliClient.via_http(hub.hub_id, base))
 
-    try:
-        serial_hubs = CliClient.discover_serial()
-    except Exception:
-        pass
-    cli_serial = serial_hubs[0] if serial_hubs else CliClient.via_serial(tty)
-    _run("CLI/serial", cli_serial,
-         discover_fn=CliClient.discover_serial,
-         discover_fmt=lambda hubs: [h._transport._port for h in hubs])
+    serial_hubs = _discover("CLI/serial", CliClient.discover_serial)
+    for hub in serial_hubs:
+        _run(f"CLI/serial [{hub.hub_id}]", hub)
 
-    rpc.close()
+    for hub in rpc_hubs:
+        hub.close()
     return True
 
 

@@ -95,7 +95,7 @@ The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode ca
   - `models.py` — `PortState` dataclass (shared across all backends)
   - `templates/index.html`, `static/main.js` — frontend
 
-**`hub.py` is legacy code** — a low-level `CambrionixHub` class that predates `hub_backends.py`. It is not used by the app or any tests. Do not use it; it also contains the `\r`-only terminator bug that causes hub unresponsive state (see Known issues).
+**Do not introduce a `hub.py`** — this name was used by an early prototype `CambrionixHub` class that predates `hub_backends.py`. It had the `\r`-only terminator bug that causes hub unresponsive state (see Known issues). All hub logic now lives in `hub_backends.py`.
 
 There is no formal test framework (no pytest). `test_api.py` is a standalone diagnostic/smoke-test script with a manual CLI dispatch (`if __name__ == "__main__"`).
 
@@ -176,6 +176,21 @@ All three backends determine supported modes dynamically from the hub's firmware
 
 The hub ID is the USB serial number assigned by the OS (e.g. `DK0F9SOT`), not the firmware `sn` field (which is zeroed on some hubs). `RestApiClient` and `JsonRpcClient` receive it directly from the service. `CliClient` reads it from the OS via `udevadm info` (`ID_SERIAL_SHORT`) for `SerialTransport`, or uses the stored hub ID for `ApiProxyTransport`.
 
+## Web app API endpoints
+
+The FastAPI app (`app.py`) exposes:
+
+- `GET /` — renders `index.html` with initial port state (SSR)
+- `GET /api/ports` — returns `list[PortState]` as JSON; polled every 2 s by the frontend
+- `GET /api/modes` — returns `list[str]` of supported mode strings
+- `POST /api/ports/{port_id}/mode` — body `{"mode": "..."}`, validates against `supported_modes()`, calls `hub.set_mode()`
+
+The `hub` singleton in `app.py` is a module-level `CambrionixClient()` (i.e. `RestApiClient`). It is not thread-safe beyond what FastAPI's default single-process worker provides.
+
 ## Commit conventions
 
 Every commit must include a `Co-Authored-By` line crediting the agent that made the change (using that agent's own name and contact).
+
+## Keeping docs in sync
+
+`AGENTS.md` (project root) mirrors this file for non-Claude AI agents. When updating CLAUDE.md with decisions that affect project direction, apply the same change to AGENTS.md.

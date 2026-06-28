@@ -36,6 +36,7 @@ def _hw_to_fc(hw: str) -> str:
 
 
 class HubClient(ABC):
+    @property
     @abstractmethod
     def hub_id(self) -> str: ...
 
@@ -59,7 +60,10 @@ class HubClient(ABC):
 class RestApiClient(HubClient):
     @classmethod
     def discover(cls, base: str = _REST_BASE) -> list["RestApiClient"]:
-        data = httpx.get(f"{base}/hubs", timeout=5).raise_for_status().json()
+        try:
+            data = httpx.get(f"{base}/hubs", timeout=5).raise_for_status().json()
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            raise RuntimeError(f"CambrionixApiService not reachable at {base} — is it running?") from e
         return [cls(base, h["serialNumber"]) for h in data["result"]]
 
     def __init__(self, base: str = _REST_BASE, hub_id: str | None = None):
@@ -68,6 +72,7 @@ class RestApiClient(HubClient):
         self._hub: str | None = hub_id
         self._modes: list[str] | None = None
 
+    @property
     def hub_id(self) -> str:
         if not self._hub:
             data = self._client.get(f"{self._base}/hubs").raise_for_status().json()
@@ -76,7 +81,7 @@ class RestApiClient(HubClient):
 
     def supported_modes(self) -> list[str]:
         if self._modes is None:
-            hub = self.hub_id()
+            hub = self.hub_id
             data = self._client.get(
                 f"{self._base}/hubs/{hub}/ports/modes/supported"
             ).raise_for_status().json()
@@ -86,7 +91,7 @@ class RestApiClient(HubClient):
     def _fetch_energies(self) -> dict[int, float | None]:
         # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): energy field missing
         # from port response. Fetch via firmware CLI state command as workaround.
-        hub = self.hub_id()
+        hub = self.hub_id
         resp = self._client.post(
             f"{self._base}/hubs/{hub}/command",
             content="state\n",
@@ -108,14 +113,14 @@ class RestApiClient(HubClient):
         return energies
 
     def get_ports(self) -> list[PortState]:
-        hub = self.hub_id()
+        hub = self.hub_id
         data = self._client.get(f"{self._base}/hubs/{hub}/ports").raise_for_status().json()
         energies = self._fetch_energies()
         ports = [self._parse(p, energies.get(p["id"])) for p in data["result"] if p["id"] != 0]
         return sorted(ports, key=lambda p: p.id)
 
     def get_port(self, port_id: int) -> PortState:
-        hub = self.hub_id()
+        hub = self.hub_id
         data = self._client.get(
             f"{self._base}/hubs/{hub}/ports/{port_id}"
         ).raise_for_status().json()
@@ -123,7 +128,7 @@ class RestApiClient(HubClient):
         return self._parse(data["result"], energies.get(port_id))
 
     def set_mode(self, port_id: int, mode: str) -> None:
-        hub = self.hub_id()
+        hub = self.hub_id
         # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): POST mode "on"
         # returns success but port stays off. Always use firmware CLI for "on".
         if mode == "on":
@@ -162,7 +167,11 @@ class JsonRpcClient(HubClient):
     def discover(cls, host: str = _RPC_HOST, port: int = _RPC_PORT) -> list["JsonRpcClient"]:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(5)
-        sock.connect((host, port))
+        try:
+            sock.connect((host, port))
+        except (ConnectionRefusedError, socket.timeout) as e:
+            sock.close()
+            raise RuntimeError(f"CambrionixApiService not reachable at {host}:{port} — is it running?") from e
         req_id = 1
         req = {"jsonrpc": "2.0", "id": req_id, "method": "cbrx_discover", "params": ["local"]}
         sock.sendall(json.dumps(req).encode())
@@ -254,6 +263,7 @@ class JsonRpcClient(HubClient):
                 if not chunk:
                     return [None] * len(requests)
 
+    @property
     def hub_id(self) -> str:
         self._connect()
         return self._unit
@@ -427,7 +437,7 @@ class CliClient(HubClient):
         for p in list_ports.comports():
             client = cls.via_serial(p.device)
             try:
-                client.hub_id()
+                client.hub_id
             except Exception:
                 continue
             found.append(client)
@@ -447,6 +457,7 @@ class CliClient(HubClient):
         self._fc: str | None = None
         self._modes: list[str] | None = None
 
+    @property
     def hub_id(self) -> str:
         if self._hub_serial is None:
             self._parse_id()
