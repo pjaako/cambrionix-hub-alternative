@@ -300,26 +300,25 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
     from hub_backends import RestApiClient, JsonRpcClient, CliClient, SerialTransport
 
     ok, info = check_api(host, port)
-    if not ok:
-        print(f"CambrionixApiService not reachable at {host}:{port} — {info}")
-        return False
-    print(f"CambrionixApiService {info} reachable.\n")
+    print(f"CambrionixApiService: {info if ok else 'not reachable — ' + info}\n")
 
     rest = RestApiClient(f"http://{host}:{port}/api/v1")
     rpc = JsonRpcClient(host, port)
     cli = CliClient(SerialTransport(tty))
 
-    attached_id = next((p.id for p in rest.get_ports() if p.attached), None)
-
+    attached_id = None
     for label, b in [("REST", rest), ("RPC", rpc), ("CLI", cli)]:
         print(f"=== {label} ===")
         try:
             print(f"  hub_id:          {b.hub_id()}")
             print(f"  supported_modes: {b.supported_modes()}")
+            ports = b.get_ports()
             print(f"  get_ports:")
-            for p in b.get_ports():
+            for p in ports:
                 print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
                       f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+            if attached_id is None:
+                attached_id = next((p.id for p in ports if p.attached), None)
             if attached_id is not None:
                 p = b.get_port(attached_id)
                 print(f"  get_port({attached_id}): attached={p.attached} mode={p.mode} "
