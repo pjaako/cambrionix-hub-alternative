@@ -391,6 +391,14 @@ class ApiProxyTransport(CliTransport):
 # ---------------------------------------------------------------------------
 
 class CliClient(HubClient):
+    @classmethod
+    def via_serial(cls, tty: str = "/dev/ttyUSB0") -> "CliClient":
+        return cls(SerialTransport(tty))
+
+    @classmethod
+    def via_http(cls, hub_id: str, base: str = _REST_BASE) -> "CliClient":
+        return cls(ApiProxyTransport(hub_id, base))
+
     def __init__(self, transport: CliTransport, hub_serial: str | None = None):
         self._transport = transport
         self._hub_serial = hub_serial

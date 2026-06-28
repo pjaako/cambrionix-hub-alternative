@@ -266,7 +266,7 @@ def sync_wakeup_diagnostic(hub_id, port_id, host=HOST, port=PORT, pause=5):
 
 def port_info(port_id, host=HOST, port=PORT):
     """Show full state and supported modes for a specific port across all three backends."""
-    from hub_backends import RestApiClient, JsonRpcClient, CliClient, ApiProxyTransport
+    from hub_backends import RestApiClient, JsonRpcClient, CliClient
 
     ok, info = check_api(host, port)
     if not ok:
@@ -276,7 +276,7 @@ def port_info(port_id, host=HOST, port=PORT):
 
     rest = RestApiClient(f"http://{host}:{port}/api/v1")
     rpc  = JsonRpcClient(host, port)
-    cli  = CliClient(ApiProxyTransport(rest.hub_id(), f"http://{host}:{port}/api/v1"))
+    cli  = CliClient.via_http(rest.hub_id(), f"http://{host}:{port}/api/v1")
 
     backends = [("REST", rest), ("RPC ", rpc), ("CLI ", cli)]
 
@@ -297,14 +297,14 @@ def port_info(port_id, host=HOST, port=PORT):
 def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
     """Exercise all three HubClient backends, each printed in full before the next.
     CLI backend (SerialTransport) runs last — direct serial access can disrupt the service."""
-    from hub_backends import RestApiClient, JsonRpcClient, CliClient, SerialTransport
+    from hub_backends import RestApiClient, JsonRpcClient, CliClient
 
     ok, info = check_api(host, port)
     print(f"CambrionixApiService: {info if ok else 'not reachable — ' + info}\n")
 
     rest = RestApiClient(f"http://{host}:{port}/api/v1")
     rpc = JsonRpcClient(host, port)
-    cli = CliClient(SerialTransport(tty))
+    cli = CliClient.via_serial(tty)
 
     attached_id = None
     for label, b in [("REST", rest), ("RPC", rpc), ("CLI", cli)]:
