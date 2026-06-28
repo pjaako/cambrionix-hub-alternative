@@ -123,8 +123,8 @@ Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"bi
 
 `CliClient` is split into two layers: a `CliTransport` ABC (defines `send_command(cmd) -> str`) and the `CliClient` hub logic on top. Two transports exist:
 
-- `SerialTransport` — opens the TTY directly, sends `cmd\r\n`, reads until `>>` prompt
-- `ApiProxyTransport` — sends `POST /api/v1/hubs/{hubId}/command` with plain-text body; hub serial is the hub ID passed at construction
+- `SerialTransport` — opens the TTY directly, sends `cmd\r\n`, reads until `>>` prompt. Local hubs only.
+- `ApiProxyTransport` — sends `POST /api/v1/hubs/{hubId}/command` with plain-text body; hub serial is the hub ID passed at construction. Inherits the service's hub scope (local + remote via Cambrionix Connect).
 
 The named constructors `CliClient.via_serial()` and `CliClient.via_http()` select the transport. `SerialTransport.hub_serial()` calls `udevadm info` to read `ID_SERIAL_SHORT`; `ApiProxyTransport.hub_serial()` returns the stored hub ID.
 
