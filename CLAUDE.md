@@ -104,7 +104,7 @@ There is no formal test framework (no pytest). `test_api.py` is a standalone dia
 All three backends implement the same `HubClient` interface defined in `hub_backends.py`:
 
 ```
-hub_id() -> str
+hub_id: str  # property
 supported_modes() -> list[str]
 get_ports() -> list[PortState]
 get_port(port_id: int) -> PortState
