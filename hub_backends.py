@@ -78,10 +78,35 @@ class RestApiClient(HubClient):
             self._modes = [m["mode"] for m in data["result"]]
         return self._modes
 
+    def _fetch_energies(self) -> dict[int, float | None]:
+        # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): energy field missing
+        # from port response. Fetch via firmware CLI state command as workaround.
+        hub = self.hub_id()
+        resp = self._client.post(
+            f"{self._base}/hubs/{hub}/command",
+            content="state\n",
+            headers={"Content-Type": "text/plain"},
+        ).raise_for_status()
+        energies: dict[int, float | None] = {}
+        for line in resp.text.splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 7:
+                continue
+            try:
+                port_id = int(parts[0])
+            except ValueError:
+                continue
+            try:
+                energies[port_id] = float(parts[6]) if parts[6] not in ("", "x") else None
+            except ValueError:
+                energies[port_id] = None
+        return energies
+
     def get_ports(self) -> list[PortState]:
         hub = self.hub_id()
         data = self._client.get(f"{self._base}/hubs/{hub}/ports").raise_for_status().json()
-        ports = [self._parse(p) for p in data["result"] if p["id"] != 0]
+        energies = self._fetch_energies()
+        ports = [self._parse(p, energies.get(p["id"])) for p in data["result"] if p["id"] != 0]
         return sorted(ports, key=lambda p: p.id)
 
     def get_port(self, port_id: int) -> PortState:
@@ -89,7 +114,8 @@ class RestApiClient(HubClient):
         data = self._client.get(
             f"{self._base}/hubs/{hub}/ports/{port_id}"
         ).raise_for_status().json()
-        return self._parse(data["result"])
+        energies = self._fetch_energies()
+        return self._parse(data["result"], energies.get(port_id))
 
     def set_mode(self, port_id: int, mode: str) -> None:
         hub = self.hub_id()
@@ -107,7 +133,7 @@ class RestApiClient(HubClient):
             json={"mode": mode},
         ).raise_for_status()
 
-    def _parse(self, raw: dict) -> PortState:
+    def _parse(self, raw: dict, energy_wh: float | None = None) -> PortState:
         state = raw.get("state", {})
         sensors = {s["type"]: s["value"] for s in raw.get("sensors", [])}
         charging = raw.get("power", {}).get("charge", {}).get("charging", {})
@@ -118,7 +144,7 @@ class RestApiClient(HubClient):
             voltage_v=sensors.get("volts"),
             current_ma=sensors.get("milliamps"),
             charging_seconds=charging.get("seconds"),
-            energy_wh=charging.get("energy"),  # None due to known API bug
+            energy_wh=energy_wh,
         )
 
 
