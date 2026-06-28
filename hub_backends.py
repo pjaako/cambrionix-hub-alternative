@@ -207,6 +207,25 @@ class JsonRpcClient(HubClient):
     def _get(self, key: str):
         return self._rpc("cbrx_connection_get", [self._handle, key])
 
+    def _rpc_batch(self, requests: list[tuple[str, list]]) -> list:
+        """Send multiple RPC requests in one round trip; return results in order."""
+        batch = []
+        for i, (method, params) in enumerate(requests):
+            self._req_id += 1
+            batch.append({"jsonrpc": "2.0", "id": self._req_id, "method": method, "params": params})
+        self._sock.sendall(json.dumps(batch).encode())
+        buf = b""
+        while True:
+            chunk = self._sock.recv(65536)
+            buf += chunk
+            try:
+                responses = json.loads(buf.decode())
+                by_id = {r["id"]: r.get("result") for r in responses}
+                return [by_id[r["id"]] for r in batch]
+            except (json.JSONDecodeError, KeyError):
+                if not chunk:
+                    return [None] * len(requests)
+
     def hub_id(self) -> str:
         self._connect()
         return self._unit
@@ -221,8 +240,27 @@ class JsonRpcClient(HubClient):
     def get_ports(self) -> list[PortState]:
         self._connect()
         ports_info = self._get("PortsInfo") or {}
+        port_ids = sorted(
+            info["Port"] for info in ports_info.values() if info.get("Port", 0) != 0
+        )
+        # Batch-fetch voltage, time, energy for all ports in one round trip
+        props = ["Voltage_10mV", "TimeCharging_sec", "Energy_Wh"]
+        requests = [
+            ("cbrx_connection_get", [self._handle, f"Port.{pid}.{prop}"])
+            for pid in port_ids
+            for prop in props
+        ]
+        results = self._rpc_batch(requests)
+        extras: dict[int, dict] = {}
+        for i, pid in enumerate(port_ids):
+            v10mv, t, e = results[i * 3], results[i * 3 + 1], results[i * 3 + 2]
+            extras[pid] = {
+                "voltage_v": v10mv / 100.0 if v10mv is not None else None,
+                "charging_seconds": t,
+                "energy_wh": e,
+            }
         ports = [
-            self._parse_ports_info(info)
+            self._parse_ports_info(info, extras.get(info["Port"], {}))
             for info in ports_info.values()
             if info.get("Port", 0) != 0
         ]
@@ -251,17 +289,17 @@ class JsonRpcClient(HubClient):
         self._connect()
         self._rpc("cbrx_connection_set", [self._handle, f"Port.{port_id}.Mode", _MODE_TO_CLI.get(mode, mode)])
 
-    def _parse_ports_info(self, info: dict) -> PortState:
+    def _parse_ports_info(self, info: dict, extras: dict = {}) -> PortState:
         flags = info.get("Flags", "")
         mode = "off" if "O" in flags else ("sync" if "S" in flags else ("biased" if "B" in flags else "on"))
         return PortState(
             id=info["Port"],
             attached=info.get("Attached", False),
             mode=mode,
-            voltage_v=None,
+            voltage_v=extras.get("voltage_v"),
             current_ma=info.get("Current_mA"),
-            charging_seconds=None,
-            energy_wh=None,
+            charging_seconds=extras.get("charging_seconds"),
+            energy_wh=extras.get("energy_wh"),
         )
 
 
