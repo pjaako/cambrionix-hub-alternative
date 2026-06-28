@@ -71,7 +71,7 @@ Key files:
 |---|---|---|---|
 | `RestApiClient` | Required | Local + remote | Default choice |
 | `CliClient.via_serial` | Not needed | Local only | Preferred for security-sensitive or service-free setups |
-| `CliClient.via_http` | Required | Local only | CLI robustness with multi-client access |
+| `CliClient.via_http` | Required | Local + remote | CLI robustness with multi-client access |
 | `JsonRpcClient` | Required | Local only | Discouraged — legacy/experimentation only |
 
 **`RestApiClient`** is the officially endorsed Cambrionix API. It supports remote hub access via [Cambrionix Connect](https://connect.cambrionix.com) and is the right default for most use. Be aware that the service runs as root by default, contacts Cambrionix servers, and auto-downloads and installs service updates. Early versions (≤4.0.1) have known bugs; workarounds are implemented transparently in this client.
