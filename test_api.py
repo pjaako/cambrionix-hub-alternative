@@ -294,9 +294,10 @@ def port_info(port_id, host=HOST, port=PORT):
     return True
 
 
-def test_backends(host=HOST, port=PORT):
-    """Exercise all three HubClient backends and print a comparison of their output."""
-    from hub_backends import RestApiClient, JsonRpcClient, CliClient, ApiProxyTransport
+def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
+    """Exercise all three HubClient backends, each printed in full before the next.
+    CLI backend (SerialTransport) runs last — direct serial access can disrupt the service."""
+    from hub_backends import RestApiClient, JsonRpcClient, CliClient, SerialTransport
 
     ok, info = check_api(host, port)
     if not ok:
@@ -306,34 +307,26 @@ def test_backends(host=HOST, port=PORT):
 
     rest = RestApiClient(f"http://{host}:{port}/api/v1")
     rpc = JsonRpcClient(host, port)
-    cli = CliClient(ApiProxyTransport(rest.hub_id(), f"http://{host}:{port}/api/v1"))
+    cli = CliClient(SerialTransport(tty))
 
-    backends = [("REST", rest), ("RPC ", rpc), ("CLI ", cli)]
+    attached_id = next((p.id for p in rest.get_ports() if p.attached), None)
 
-    print("--- hub_id ---")
-    for label, b in backends:
-        print(f"  {label}: {b.hub_id()}")
-
-    print("\n--- supported_modes ---")
-    for label, b in backends:
-        print(f"  {label}: {b.supported_modes()}")
-
-    print("\n--- get_ports ---")
-    for label, b in backends:
-        ports = b.get_ports()
-        print(f"  {label}:")
-        for p in ports:
-            print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
-                  f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
-
-    attached_ids = [p.id for p in rest.get_ports() if p.attached]
-    if attached_ids:
-        port_id = attached_ids[0]
-        print(f"\n--- get_port({port_id}) ---")
-        for label, b in backends:
-            p = b.get_port(port_id)
-            print(f"  {label}: attached={p.attached} mode={p.mode} "
-                  f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+    for label, b in [("REST", rest), ("RPC", rpc), ("CLI", cli)]:
+        print(f"=== {label} ===")
+        try:
+            print(f"  hub_id:          {b.hub_id()}")
+            print(f"  supported_modes: {b.supported_modes()}")
+            print(f"  get_ports:")
+            for p in b.get_ports():
+                print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
+                      f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+            if attached_id is not None:
+                p = b.get_port(attached_id)
+                print(f"  get_port({attached_id}): attached={p.attached} mode={p.mode} "
+                      f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+        except Exception as e:
+            print(f"  FAILED: {e}")
+        print()
 
     rpc.close()
     return True
