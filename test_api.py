@@ -304,42 +304,16 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
 
     base = f"http://{host}:{port}/api/v1"
 
-    # Discovery
-    print("--- discovery ---")
-    try:
-        rest_hubs = RestApiClient.discover(base)
-        print(f"  REST:        {[c.hub_id() for c in rest_hubs]}")
-    except Exception as e:
-        rest_hubs = []
-        print(f"  REST:        FAILED: {e}")
-    try:
-        rpc_hubs = JsonRpcClient.discover(host, port)
-        print(f"  RPC:         {[c.hub_id() for c in rpc_hubs]}")
-    except Exception as e:
-        rpc_hubs = []
-        print(f"  RPC:         FAILED: {e}")
-    try:
-        serial_hubs = CliClient.discover_serial()
-        print(f"  CLI/serial:  {[h._transport._port for h in serial_hubs]}")
-    except Exception as e:
-        serial_hubs = []
-        print(f"  CLI/serial:  FAILED: {e}")
-    print()
+    rest_hubs = []
+    rpc_hubs = []
+    serial_hubs = []
 
-    rest = rest_hubs[0] if rest_hubs else RestApiClient(base)
-    rpc = rpc_hubs[0] if rpc_hubs else JsonRpcClient(host, port)
-    cli_http = CliClient.via_http(rest.hub_id(), base) if ok else None
-    cli_serial = serial_hubs[0] if serial_hubs else CliClient.via_serial(tty)
-
-    backends = [("REST", rest), ("RPC", rpc)]
-    if cli_http is not None:
-        backends.append(("CLI/http", cli_http))
-    backends.append(("CLI/serial", cli_serial))
-
-    attached_id = None
-    for label, b in backends:
+    def _run(label, b, discover_fn=None, discover_fmt=None):
         print(f"=== {label} ===")
         try:
+            if discover_fn is not None:
+                found = discover_fn()
+                print(f"  discover:        {discover_fmt(found)}")
             print(f"  hub_id:          {b.hub_id()}")
             print(f"  supported_modes: {b.supported_modes()}")
             ports = b.get_ports()
@@ -347,15 +321,44 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
             for p in ports:
                 print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
                       f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
-            if attached_id is None:
-                attached_id = next((p.id for p in ports if p.attached), None)
-            if attached_id is not None:
-                p = b.get_port(attached_id)
-                print(f"  get_port({attached_id}): attached={p.attached} mode={p.mode} "
+            attached = next((p.id for p in ports if p.attached), None)
+            if attached is not None:
+                p = b.get_port(attached)
+                print(f"  get_port({attached}): attached={p.attached} mode={p.mode} "
                       f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
         except Exception as e:
             print(f"  FAILED: {e}")
         print()
+
+    try:
+        rest_hubs = RestApiClient.discover(base)
+    except Exception:
+        pass
+    rest = rest_hubs[0] if rest_hubs else RestApiClient(base)
+    _run("REST", rest,
+         discover_fn=lambda: RestApiClient.discover(base),
+         discover_fmt=lambda hubs: [h.hub_id() for h in hubs])
+
+    try:
+        rpc_hubs = JsonRpcClient.discover(host, port)
+    except Exception:
+        pass
+    rpc = rpc_hubs[0] if rpc_hubs else JsonRpcClient(host, port)
+    _run("RPC", rpc,
+         discover_fn=lambda: JsonRpcClient.discover(host, port),
+         discover_fmt=lambda hubs: [h.hub_id() for h in hubs])
+
+    if ok:
+        _run("CLI/http", CliClient.via_http(rest.hub_id(), base))
+
+    try:
+        serial_hubs = CliClient.discover_serial()
+    except Exception:
+        pass
+    cli_serial = serial_hubs[0] if serial_hubs else CliClient.via_serial(tty)
+    _run("CLI/serial", cli_serial,
+         discover_fn=CliClient.discover_serial,
+         discover_fmt=lambda hubs: [h._transport._port for h in hubs])
 
     rpc.close()
     return True
