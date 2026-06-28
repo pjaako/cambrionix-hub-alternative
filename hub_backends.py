@@ -255,9 +255,9 @@ class JsonRpcClient(HubClient):
         for i, pid in enumerate(port_ids):
             v10mv, t, e = results[i * 3], results[i * 3 + 1], results[i * 3 + 2]
             extras[pid] = {
-                "voltage_v": v10mv / 100.0 if v10mv is not None else None,
+                "voltage_v": round(v10mv / 100.0, 2) if v10mv is not None else None,
                 "charging_seconds": t,
-                "energy_wh": e,
+                "energy_wh": round(e, 2) if e is not None else None,
             }
         ports = [
             self._parse_ports_info(info, extras.get(info["Port"], {}))
@@ -274,7 +274,8 @@ class JsonRpcClient(HubClient):
         energy_wh = self._get(f"Port.{n}.Energy_Wh")
         time_sec = self._get(f"Port.{n}.TimeCharging_sec")
         raw_10mv = self._get(f"Port.{n}.Voltage_10mV")
-        voltage_v = raw_10mv / 100.0 if raw_10mv is not None else None
+        voltage_v = round(raw_10mv / 100.0, 2) if raw_10mv is not None else None
+        energy_wh = round(energy_wh, 2) if energy_wh is not None else None
         return PortState(
             id=port_id,
             attached=(current_ma or 0) > 0,
