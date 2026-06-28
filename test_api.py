@@ -302,10 +302,34 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
     ok, info = check_api(host, port)
     print(f"CambrionixApiService: {info if ok else 'not reachable — ' + info}\n")
 
-    rest = RestApiClient(f"http://{host}:{port}/api/v1")
-    rpc = JsonRpcClient(host, port)
-    cli_http = CliClient.via_http(rest.hub_id(), f"http://{host}:{port}/api/v1") if ok else None
-    cli_serial = CliClient.via_serial(tty)
+    base = f"http://{host}:{port}/api/v1"
+
+    # Discovery
+    print("--- discovery ---")
+    try:
+        rest_hubs = RestApiClient.discover(base)
+        print(f"  REST:        {[c.hub_id() for c in rest_hubs]}")
+    except Exception as e:
+        rest_hubs = []
+        print(f"  REST:        FAILED: {e}")
+    try:
+        rpc_hubs = JsonRpcClient.discover(host, port)
+        print(f"  RPC:         {[c.hub_id() for c in rpc_hubs]}")
+    except Exception as e:
+        rpc_hubs = []
+        print(f"  RPC:         FAILED: {e}")
+    try:
+        serial_hubs = CliClient.discover_serial()
+        print(f"  CLI/serial:  {[h._transport._port for h in serial_hubs]}")
+    except Exception as e:
+        serial_hubs = []
+        print(f"  CLI/serial:  FAILED: {e}")
+    print()
+
+    rest = rest_hubs[0] if rest_hubs else RestApiClient(base)
+    rpc = rpc_hubs[0] if rpc_hubs else JsonRpcClient(host, port)
+    cli_http = CliClient.via_http(rest.hub_id(), base) if ok else None
+    cli_serial = serial_hubs[0] if serial_hubs else CliClient.via_serial(tty)
 
     backends = [("REST", rest), ("RPC", rpc)]
     if cli_http is not None:
