@@ -57,10 +57,15 @@ class HubClient(ABC):
 # ---------------------------------------------------------------------------
 
 class RestApiClient(HubClient):
-    def __init__(self, base: str = _REST_BASE):
+    @classmethod
+    def discover(cls, base: str = _REST_BASE) -> list["RestApiClient"]:
+        data = httpx.get(f"{base}/hubs", timeout=5).raise_for_status().json()
+        return [cls(base, h["serialNumber"]) for h in data["result"]]
+
+    def __init__(self, base: str = _REST_BASE, hub_id: str | None = None):
         self._base = base
         self._client = httpx.Client(timeout=5)
-        self._hub: str | None = None
+        self._hub: str | None = hub_id
         self._modes: list[str] | None = None
 
     def hub_id(self) -> str:
@@ -153,12 +158,34 @@ class RestApiClient(HubClient):
 # ---------------------------------------------------------------------------
 
 class JsonRpcClient(HubClient):
-    def __init__(self, host: str = _RPC_HOST, port: int = _RPC_PORT):
+    @classmethod
+    def discover(cls, host: str = _RPC_HOST, port: int = _RPC_PORT) -> list["JsonRpcClient"]:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((host, port))
+        req_id = 1
+        req = {"jsonrpc": "2.0", "id": req_id, "method": "cbrx_discover", "params": ["local"]}
+        sock.sendall(json.dumps(req).encode())
+        buf = b""
+        while True:
+            chunk = sock.recv(65536)
+            buf += chunk
+            try:
+                units = json.loads(buf.decode()).get("result") or []
+                break
+            except json.JSONDecodeError:
+                if not chunk:
+                    units = []
+                    break
+        sock.close()
+        return [cls(host, port, unit) for unit in units]
+
+    def __init__(self, host: str = _RPC_HOST, port: int = _RPC_PORT, unit: str | None = None):
         self._host = host
         self._port = port
         self._sock: socket.socket | None = None
         self._handle: str | None = None
-        self._unit: str | None = None
+        self._unit: str | None = unit
         self._req_id = 0
         self._modes: list[str] | None = None
 
@@ -169,10 +196,11 @@ class JsonRpcClient(HubClient):
         sock.settimeout(5)
         sock.connect((self._host, self._port))
         self._sock = sock
-        units = self._rpc("cbrx_discover", ["local"])
-        if not units:
-            raise RuntimeError("No Cambrionix units found via JSON-RPC")
-        self._unit = units[0]
+        if self._unit is None:
+            units = self._rpc("cbrx_discover", ["local"])
+            if not units:
+                raise RuntimeError("No Cambrionix units found via JSON-RPC")
+            self._unit = units[0]
         self._handle = self._rpc("cbrx_connection_open", [self._unit])
 
     def close(self) -> None:
@@ -391,6 +419,12 @@ class ApiProxyTransport(CliTransport):
 # ---------------------------------------------------------------------------
 
 class CliClient(HubClient):
+    @classmethod
+    def discover_serial(cls) -> list["CliClient"]:
+        from serial.tools import list_ports
+        # FTDI USB vendor ID — Cambrionix hubs use FTDI FT230X chips
+        return [cls.via_serial(p.device) for p in list_ports.comports() if p.vid == 0x0403]
+
     @classmethod
     def via_serial(cls, tty: str = "/dev/ttyUSB0") -> "CliClient":
         return cls(SerialTransport(tty))
