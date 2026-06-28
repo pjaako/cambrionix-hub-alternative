@@ -424,27 +424,11 @@ class CliClient(HubClient):
         from serial.tools import list_ports
         found = []
         for p in list_ports.comports():
-            if p.vid != 0x0403:
-                continue
-            transport = SerialTransport(p.device)
+            client = cls.via_serial(p.device)
             try:
-                raw = transport.send_command("id")
+                client.hub_id()
             except Exception:
                 continue
-            if "cambrionix" not in raw.lower():
-                continue
-            info: dict[str, str] = {}
-            for line in raw.splitlines():
-                if "mfr:" in line:
-                    for part in line.replace(">>", "").strip().split(","):
-                        if ":" in part:
-                            k, v = part.split(":", 1)
-                            info[k.strip()] = v.strip()
-                    break
-            hub_serial = transport.hub_serial() or info.get("sn", "unknown")
-            client = cls(transport, hub_serial)
-            client._fc = info.get("fc", "")
-            client._modes = _FC_MODES.get(client._fc, ["on", "off"])
             found.append(client)
         return found
 
@@ -472,11 +456,13 @@ class CliClient(HubClient):
         info: dict[str, str] = {}
         for line in raw.splitlines():
             if "mfr:" in line:
-                for part in line.replace(">>", "").strip().split(","):  
+                for part in line.replace(">>", "").strip().split(","):
                     if ":" in part:
                         k, v = part.split(":", 1)
                         info[k.strip()] = v.strip()
                 break
+        if info.get("mfr", "").lower() != "cambrionix":
+            raise ValueError(f"Not a Cambrionix device (mfr={info.get('mfr')!r})")
         # Prefer USB-level serial from transport (FTDI chip); firmware sn may be zeroed
         self._hub_serial = self._transport.hub_serial() or info.get("sn", "unknown")
         self._fc = info.get("fc", "")
