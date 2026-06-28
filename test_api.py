@@ -330,24 +330,23 @@ def test_backends(host=HOST, port=PORT):
             print(f"{label} discover failed: {e}\n")
             return []
 
-    rest_hubs = _discover("REST", RestApiClient.discover)
-    for hub in rest_hubs:
-        _run(f"REST [{hub.hub_id}]", hub)
+    backends = [
+        ("REST",       RestApiClient.discover),
+        ("RPC",        JsonRpcClient.discover),
+        ("CLI/http",   CliClient.discover_http),
+        ("CLI/serial", CliClient.discover_serial),
+    ]
 
-    rpc_hubs = _discover("RPC", JsonRpcClient.discover)
-    for hub in rpc_hubs:
-        _run(f"RPC [{hub.hub_id}]", hub)
+    all_hubs = []
+    for label, discover_fn in backends:
+        hubs = _discover(label, discover_fn)
+        for hub in hubs:
+            _run(f"{label} [{hub.hub_id}]", hub)
+        all_hubs.extend(hubs)
 
-    cli_http_hubs = _discover("CLI/http", CliClient.discover_http)
-    for hub in cli_http_hubs:
-        _run(f"CLI/http [{hub.hub_id}]", hub)
-
-    serial_hubs = _discover("CLI/serial", CliClient.discover_serial)
-    for hub in serial_hubs:
-        _run(f"CLI/serial [{hub.hub_id}]", hub)
-
-    for hub in rpc_hubs:
-        hub.close()
+    for hub in all_hubs:
+        if hasattr(hub, "close"):
+            hub.close()
     return True
 
 
