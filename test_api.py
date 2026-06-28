@@ -294,15 +294,13 @@ def port_info(port_id, host=HOST, port=PORT):
     return True
 
 
-def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
+def test_backends(host=HOST, port=PORT):
     """Exercise all four HubClient backends, each printed in full before the next.
     CLI/serial runs last — direct serial access can disrupt the service."""
     from hub_backends import RestApiClient, JsonRpcClient, CliClient
 
     ok, info = check_api(host, port)
     print(f"CambrionixApiService: {info if ok else 'not reachable — ' + info}\n")
-
-    base = f"http://{host}:{port}/api/v1"
 
     def _run(label, b):
         print(f"=== {label} ===")
@@ -332,15 +330,15 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
             print(f"{label} discover failed: {e}\n")
             return []
 
-    rest_hubs = _discover("REST", lambda: RestApiClient.discover(base))
+    rest_hubs = _discover("REST", RestApiClient.discover)
     for hub in rest_hubs:
         _run(f"REST [{hub.hub_id}]", hub)
 
-    rpc_hubs = _discover("RPC", lambda: JsonRpcClient.discover(host, port))
+    rpc_hubs = _discover("RPC", JsonRpcClient.discover)
     for hub in rpc_hubs:
         _run(f"RPC [{hub.hub_id}]", hub)
 
-    cli_http_hubs = _discover("CLI/http", lambda: CliClient.discover_http(base))
+    cli_http_hubs = _discover("CLI/http", CliClient.discover_http)
     for hub in cli_http_hubs:
         _run(f"CLI/http [{hub.hub_id}]", hub)
 
