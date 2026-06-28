@@ -340,9 +340,9 @@ def test_backends(tty="/dev/ttyUSB0", host=HOST, port=PORT):
     for hub in rpc_hubs:
         _run(f"RPC [{hub.hub_id}]", hub)
 
-    if ok:
-        for hub in rest_hubs:
-            _run(f"CLI/http [{hub.hub_id}]", CliClient.via_http(hub.hub_id, base))
+    cli_http_hubs = _discover("CLI/http", lambda: CliClient.discover_http(base))
+    for hub in cli_http_hubs:
+        _run(f"CLI/http [{hub.hub_id}]", hub)
 
     serial_hubs = _discover("CLI/serial", CliClient.discover_serial)
     for hub in serial_hubs:

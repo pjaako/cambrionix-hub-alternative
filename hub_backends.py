@@ -444,6 +444,14 @@ class CliClient(HubClient):
         return found
 
     @classmethod
+    def discover_http(cls, base: str = _REST_BASE) -> list["CliClient"]:
+        try:
+            data = httpx.get(f"{base}/hubs", timeout=5).raise_for_status().json()
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            raise RuntimeError(f"CambrionixApiService not reachable at {base} — is it running?") from e
+        return [cls.via_http(h["serialNumber"], base) for h in data["result"]]
+
+    @classmethod
     def via_serial(cls, tty: str = "/dev/ttyUSB0") -> "CliClient":
         return cls(SerialTransport(tty))
 

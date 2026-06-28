@@ -153,9 +153,10 @@ The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, 
 Each backend provides a classmethod to enumerate available hubs:
 
 ```python
-RestApiClient.discover(base)      # GET /hubs — returns list[RestApiClient]
-JsonRpcClient.discover(host, port)# cbrx_discover — returns list[JsonRpcClient]
-CliClient.discover_serial()       # probes all USB serial ports, confirms via `id` command — returns list[CliClient]
+RestApiClient.discover(base)       # GET /hubs — returns list[RestApiClient]
+JsonRpcClient.discover(host, port) # cbrx_discover — returns list[JsonRpcClient]
+CliClient.discover_http(base)      # GET /hubs, wraps each in ApiProxyTransport — returns list[CliClient]
+CliClient.discover_serial()        # probes all USB serial ports, confirms via `id` command — returns list[CliClient]
 ```
 
 Returned instances have hub identity pre-seeded (no extra network/serial call on first use).
