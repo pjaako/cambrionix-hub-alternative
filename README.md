@@ -65,6 +65,23 @@ Key files:
 - `models.py` — `PortState` dataclass (shared across all backends)
 - `templates/index.html`, `static/main.js` — frontend
 
+## Which backend to use?
+
+| Backend | `CambrionixApiService` | Hub scope | Verdict |
+|---|---|---|---|
+| `RestApiClient` | Required | Local + remote | Default choice |
+| `CliClient.via_serial` | Not needed | Local only | Preferred for security-sensitive or service-free setups |
+| `CliClient.via_http` | Required | Local only | CLI robustness with multi-client access |
+| `JsonRpcClient` | Required | Local only | Discouraged — legacy/experimentation only |
+
+**`RestApiClient`** is the officially endorsed Cambrionix API. It supports remote hub access via [Cambrionix Connect](https://connect.cambrionix.com) and is the right default for most use. Be aware that the service runs as root by default, contacts Cambrionix servers, and auto-downloads and installs service updates. Early versions (≤4.0.1) have known bugs; workarounds are implemented transparently in this client.
+
+**`CliClient.via_serial`** talks directly to the hub firmware over the serial port with no background service involved — the smallest possible attack surface and the fewest moving parts. Local hubs only. Because it parses firmware CLI text output, a firmware update could silently break compatibility.
+
+**`CliClient.via_http`** routes firmware CLI commands through the REST service's `/command` proxy endpoint, combining CLI-level directness with the multi-client access and optional cloud features the service provides. `RestApiClient` already uses this path internally for its workarounds (energy fetch, mode "on" fix), so this variant is most useful when you need to send firmware commands not exposed by the REST API.
+
+**`JsonRpcClient`** exists for compatibility with pre-4.0 service versions and for experimentation. It has never been validated against an actual older API version. Use `RestApiClient` instead for all new code.
+
 ## Testing and Debugging
 
 `test_api.py` is the main diagnostic script:
