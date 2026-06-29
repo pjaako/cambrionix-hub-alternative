@@ -7,45 +7,40 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from hub_client import discover_hubs
-from hub_backends import HubClient
 
 app = FastAPI(title="Cambrionix Hub Monitor")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-
-hubs: list[HubClient] = discover_hubs()
 
 
 class ModeRequest(BaseModel):
     mode: str
 
 
-def _get_hub(hub_id: str) -> HubClient:
+def _close_all(hubs: list) -> None:
     for h in hubs:
-        if h.hub_id == hub_id:
-            return h
-    raise HTTPException(status_code=404, detail=f"Hub {hub_id!r} not found")
-
-
-def _hub_data(h: HubClient) -> dict:
-    return {
-        "hub_id": h.hub_id,
-        "modes": h.supported_modes(),
-        "ports": h.get_ports(),
-    }
+        if hasattr(h, "close"):
+            h.close()
 
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
+    hubs = discover_hubs()
+    try:
+        hubs_data = [
+            {"hub_id": h.hub_id, "modes": h.supported_modes(), "ports": h.get_ports()}
+            for h in hubs
+        ]
+    finally:
+        _close_all(hubs)
     return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={"hubs": [_hub_data(h) for h in hubs]},
+        request=request, name="index.html", context={"hubs": hubs_data}
     )
 
 
 @app.get("/api/hubs")
 def api_hubs():
+    hubs = discover_hubs()
     result = []
     for h in hubs:
         try:
@@ -62,14 +57,23 @@ def api_hubs():
                 "ports": [],
                 "error": str(e),
             })
+        finally:
+            if hasattr(h, "close"):
+                h.close()
     return result
 
 
 @app.post("/api/hubs/{hub_id}/ports/{port_id}/mode")
 def api_set_mode(hub_id: str, port_id: int, body: ModeRequest):
-    h = _get_hub(hub_id)
-    valid = h.supported_modes()
-    if body.mode not in valid:
-        raise HTTPException(status_code=422, detail=f"mode must be one of {valid}")
-    h.set_mode(port_id, body.mode)
+    hubs = discover_hubs()
+    try:
+        hub = next((h for h in hubs if h.hub_id == hub_id), None)
+        if hub is None:
+            raise HTTPException(status_code=404, detail=f"Hub {hub_id!r} not found")
+        valid = hub.supported_modes()
+        if body.mode not in valid:
+            raise HTTPException(status_code=422, detail=f"mode must be one of {valid}")
+        hub.set_mode(port_id, body.mode)
+    finally:
+        _close_all(hubs)
     return {"mode": body.mode}
