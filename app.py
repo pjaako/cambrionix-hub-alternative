@@ -6,43 +6,61 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from hub_client import CambrionixClient
+from hub_client import discover_hubs
+from hub_backends import HubClient
 
 app = FastAPI(title="Cambrionix Hub Monitor")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-hub = CambrionixClient()
+hubs: list[HubClient] = discover_hubs()
 
 
 class ModeRequest(BaseModel):
     mode: str
 
 
+def _get_hub(hub_id: str) -> HubClient:
+    for h in hubs:
+        if h.hub_id == hub_id:
+            return h
+    raise HTTPException(status_code=404, detail=f"Hub {hub_id!r} not found")
+
+
+def _hub_data(h: HubClient) -> dict:
+    return {
+        "hub_id": h.hub_id,
+        "modes": h.supported_modes(),
+        "ports": h.get_ports(),
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    ports = hub.get_ports()
-    modes = hub.supported_modes()
-    hub_id = hub.hub_id
     return templates.TemplateResponse(
-        request=request, name="index.html", context={"ports": ports, "modes": modes, "hub_id": hub_id}
+        request=request,
+        name="index.html",
+        context={"hubs": [_hub_data(h) for h in hubs]},
     )
 
 
-@app.get("/api/ports")
-def api_ports():
-    return [asdict(p) for p in hub.get_ports()]
+@app.get("/api/hubs")
+def api_hubs():
+    return [
+        {
+            "hub_id": h.hub_id,
+            "modes": h.supported_modes(),
+            "ports": [asdict(p) for p in h.get_ports()],
+        }
+        for h in hubs
+    ]
 
 
-@app.get("/api/modes")
-def api_modes():
-    return hub.supported_modes()
-
-
-@app.post("/api/ports/{port_id}/mode")
-def api_set_mode(port_id: int, body: ModeRequest):
-    valid = hub.supported_modes()
+@app.post("/api/hubs/{hub_id}/ports/{port_id}/mode")
+def api_set_mode(hub_id: str, port_id: int, body: ModeRequest):
+    h = _get_hub(hub_id)
+    valid = h.supported_modes()
     if body.mode not in valid:
         raise HTTPException(status_code=422, detail=f"mode must be one of {valid}")
-    hub.set_mode(port_id, body.mode)
+    h.set_mode(port_id, body.mode)
     return {"mode": body.mode}

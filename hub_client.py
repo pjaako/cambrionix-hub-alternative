@@ -1,3 +1,8 @@
-from hub_backends import RestApiClient as CambrionixClient
+from hub_backends import CliClient
 
-__all__ = ["CambrionixClient"]
+
+def discover_hubs():
+    return CliClient.discover_serial()
+
+
+__all__ = ["discover_hubs"]

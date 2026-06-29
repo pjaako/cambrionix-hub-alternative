@@ -1,7 +1,4 @@
-let MODES = ['on', 'off'];
 let modePending = false;
-
-fetch('/api/modes').then(r => r.json()).then(m => { MODES = m; });
 
 function fmt(seconds) {
     if (seconds == null) return '—';
@@ -13,58 +10,61 @@ function fmt(seconds) {
     return `${s}s`;
 }
 
-function renderPort(p) {
+function renderPort(p, hubId, modes) {
     const s = p.attached && p.mode === 'on' ? 'active'
             : p.attached                    ? 'standby'
             :                                 'idle';
+    const powerW = p.attached && p.voltage_v != null && p.current_ma != null
+        ? p.voltage_v * p.current_ma / 1000 : 0;
+    const barPct = Math.min(powerW / 15 * 100, 100).toFixed(0);
+    const namePrefix = `port-mode-${hubId}-${p.id}`;
 
-    const metrics = p.attached ? `
-        <div class="metrics">
-          <div class="metric-cell"><span class="metric-key">V</span>
-            <span class="metric-val">${p.voltage_v != null ? p.voltage_v.toFixed(1) : '—'}</span></div>
-          <div class="metric-cell"><span class="metric-key">I&nbsp;&nbsp;mA</span>
-            <span class="metric-val">${p.current_ma != null ? p.current_ma : '—'}</span></div>
-          <div class="metric-cell"><span class="metric-key">T</span>
-            <span class="metric-val">${fmt(p.charging_seconds)}</span></div>
-        </div>` : `<div class="no-device">no device</div>`;
-
-    const toggle = MODES.map(m => `
-        <input type="radio" name="port-mode-${p.id}" id="md-${p.id}-${m}"
+    const toggle = modes.map(m => `
+        <input type="radio" name="${namePrefix}" id="md-${hubId}-${p.id}-${m}"
                value="${m}" ${m === p.mode ? 'checked' : ''}
-               onchange="setMode(${p.id}, '${m}')">
-        <label for="md-${p.id}-${m}" class="opt-${m}">${m}</label>`
+               onchange="setMode('${hubId}', ${p.id}, '${m}')">
+        <label for="md-${hubId}-${p.id}-${m}" class="opt-${m}">${m}</label>`
     ).join('');
 
-    return `
-        <div class="port-card s-${s}">
-          <div class="card-body">
-            <div class="card-head">
-              <span class="port-label">Port ${String(p.id).padStart(2,'0')}</span>
-              <span class="led ${s !== 'idle' ? s : ''}"></span>
-            </div>
-            ${metrics}
-            <div class="mode-toggle">${toggle}</div>
-          </div>
-        </div>`;
+    return `<div class="row port-row s-${s}">
+      <span class="col-port">${String(p.id).padStart(2, '0')}</span>
+      <span class="col-led"><span class="led ${s !== 'idle' ? s : ''}"></span></span>
+      <span class="col-v">${p.attached && p.voltage_v != null ? p.voltage_v.toFixed(1) : '—'}</span>
+      <span class="col-i">${p.attached && p.current_ma != null ? p.current_ma : '—'}</span>
+      <span class="col-pwr">${p.attached ? powerW.toFixed(1) : '—'}</span>
+      <span class="col-time">${p.attached ? fmt(p.charging_seconds) : '—'}</span>
+      <div class="col-bar">
+        <div class="bar">
+          <div class="bar-fill" style="width:${barPct}%"></div>
+        </div>
+      </div>
+      <div class="col-mode"><div class="mode-toggle">${toggle}</div></div>
+    </div>`;
 }
 
 async function refresh() {
     if (modePending) return;
     try {
-        const res = await fetch('/api/ports');
+        const res = await fetch('/api/hubs');
         if (!res.ok) throw new Error(res.statusText);
-        document.getElementById('ports').innerHTML =
-            (await res.json()).map(renderPort).join('');
+        const hubs = await res.json();
+        for (const hub of hubs) {
+            const section = document.querySelector(`.hub-section[data-hub-id="${hub.hub_id}"]`);
+            if (section) {
+                section.querySelector('.hub-ports-body').innerHTML =
+                    hub.ports.map(p => renderPort(p, hub.hub_id, hub.modes)).join('');
+            }
+        }
         document.getElementById('error').textContent = '';
     } catch (e) {
         document.getElementById('error').textContent = e.message;
     }
 }
 
-async function setMode(portId, mode) {
+async function setMode(hubId, portId, mode) {
     modePending = true;
     try {
-        await fetch(`/api/ports/${portId}/mode`, {
+        await fetch(`/api/hubs/${hubId}/ports/${portId}/mode`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mode }),

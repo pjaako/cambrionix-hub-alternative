@@ -3,19 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hub Monitor · {{ hub_id }}</title>
+  <title>Hub Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg:       #0c0c0e;
-      --card:     #131316;
-      --border:   #1e1e24;
-      --text:     #d4d4e0;
-      --dim:      #4a4a5a;
-      --cyan:     #00c8e0;
-      --amber:    #f59e0b;
-      --green:    #4ade80;
-      --red:      #f87171;
-      --mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', monospace;
+      --bg:         #EDF0F5;
+      --surface:    #FFFFFF;
+      --border:     #CBD2DE;
+      --divider:    #E4E9F2;
+      --text:       #18202E;
+      --muted:      #5E6E8A;
+      --mono:       'IBM Plex Mono', ui-monospace, monospace;
+      --sans:       'Inter', system-ui, -apple-system, sans-serif;
+
+      --c-active:   #16A34A;
+      --bg-active:  #F0FAF5;
+      --c-standby:  #D97706;
+      --bg-standby: #FFFBEB;
+      --c-idle:     #C4CBDA;
+      --bg-idle:    #FFFFFF;
+
+      --c-off:      #DC2626;
+      --c-sync:     #2563EB;
+      --c-biased:   #9333EA;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -23,209 +34,276 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: system-ui, sans-serif;
-      padding: 28px 24px;
+      font-family: var(--sans);
+      font-size: 14px;
+      padding: 28px 36px;
       min-height: 100vh;
     }
 
     /* ── HEADER ── */
     .site-header {
       display: flex;
-      align-items: baseline;
-      gap: 16px;
-      padding-bottom: 16px;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 24px;
-      border-bottom: 1px solid var(--border);
     }
-    .site-header h1 {
-      font-family: var(--mono);
-      font-size: 0.65rem;
-      font-weight: 400;
-      letter-spacing: 0.25em;
+    .wordmark {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.10em;
       text-transform: uppercase;
-      color: var(--dim);
-    }
-    .hub-serial {
-      font-family: var(--mono);
-      font-size: 0.65rem;
-      letter-spacing: 0.12em;
-      color: var(--cyan);
+      color: var(--muted);
     }
 
     /* ── ERROR ── */
     #error {
-      font-family: var(--mono);
-      font-size: 0.7rem;
-      color: var(--red);
-      min-height: 1rem;
-      margin-bottom: 16px;
-      letter-spacing: 0.05em;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--c-off);
+      min-height: 1.4rem;
+      margin-bottom: 8px;
     }
 
-    /* ── GRID ── */
-    #ports { display: flex; flex-wrap: wrap; gap: 10px; }
+    /* ── HUB SECTIONS ── */
+    #hubs-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
 
-    /* ── PORT CARD ── */
-    .port-card {
-      background: var(--card);
+    .hub-section {
       border: 1px solid var(--border);
-      border-top: 2px solid var(--border);
-      width: 188px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--surface);
     }
 
-    .port-card.s-active  { border-top-color: var(--cyan); }
-    .port-card.s-standby { border-top-color: var(--amber); }
-
-    .card-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
-
-    /* ── CARD HEADER ── */
-    .card-head {
+    .hub-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 20px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--bg);
+      list-style: none;
     }
-    .port-label {
-      font-family: var(--mono);
-      font-size: 0.6rem;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--dim);
-    }
+    .hub-header::-webkit-details-marker { display: none; }
+    .hub-header::marker { display: none; }
+    .hub-section[open] .hub-header { border-bottom: 2px solid var(--border); }
 
-    /* ── LED ── */
-    .led {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #252530;
+    .hub-chevron {
+      font-size: 11px;
+      color: var(--muted);
+      transition: transform 0.15s;
+      display: inline-block;
+      line-height: 1;
     }
-    .led.active {
-      background: var(--cyan);
-      box-shadow: 0 0 5px var(--cyan);
-      animation: blink 2.4s ease-in-out infinite;
-    }
-    .led.standby {
-      background: var(--amber);
-      box-shadow: 0 0 4px var(--amber);
-    }
-    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-    @media (prefers-reduced-motion: reduce) { .led.active { animation: none; } }
+    .hub-section:not([open]) .hub-chevron { transform: rotate(-90deg); }
 
-    /* ── METRICS ── */
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
-    }
-    .metric-cell { display: flex; flex-direction: column; gap: 2px; }
-    .metric-key {
-      font-size: 0.55rem;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--dim);
-    }
-    .metric-val {
+    .hub-label {
       font-family: var(--mono);
-      font-size: 0.8rem;
+      font-size: 15px;
+      font-weight: 500;
       color: var(--text);
     }
-    .metric-val.nil { color: #2a2a35; }
 
-    .no-device {
-      font-family: var(--mono);
-      font-size: 0.6rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #252530;
-      text-align: center;
-      padding: 2px 0;
+    .hub-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-left: auto;
     }
+
+    /* ── PORT TABLE ── */
+    .hub-ports { overflow-x: auto; }
+
+    /* ── SHARED ROW GRID ── */
+    .row {
+      display: grid;
+      grid-template-columns: 52px 16px 6.5rem 8rem 6rem 9.5rem 1fr 14rem;
+      align-items: center;
+      padding: 0 20px;
+      gap: 0 4px;
+      min-width: 700px;
+    }
+
+    /* ── COLUMN HEADERS ── */
+    .row-head {
+      padding-top: 11px;
+      padding-bottom: 11px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .row-head span {
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── DATA ROWS ── */
+    .port-row {
+      padding-top: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--divider);
+    }
+    .port-row:last-child { border-bottom: none; }
+
+    .s-active  { background: linear-gradient(to right, var(--c-active)  0, var(--c-active)  4px, var(--bg-active)  4px); }
+    .s-standby { background: linear-gradient(to right, var(--c-standby) 0, var(--c-standby) 4px, var(--bg-standby) 4px); }
+    .s-idle    { background: linear-gradient(to right, var(--c-idle)    0, var(--c-idle)    4px, var(--bg-idle)    4px); }
+
+    /* ── PORT NUMBER ── */
+    .col-port {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .s-idle .col-port { color: var(--muted); }
+
+    /* ── LED ── */
+    .col-led { display: flex; align-items: center; }
+    .led {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--c-idle);
+      flex-shrink: 0;
+    }
+    .led.active  { background: var(--c-active); }
+    .led.standby { background: var(--c-standby); }
+
+    /* ── MEASUREMENT VALUES ── */
+    .col-v, .col-i, .col-pwr, .col-time {
+      font-family: var(--mono);
+      font-size: 15px;
+      color: var(--text);
+    }
+    .s-idle .col-v,
+    .s-idle .col-i,
+    .s-idle .col-pwr,
+    .s-idle .col-time { color: var(--c-idle); }
+
+    /* ── POWER BAR ── */
+    .col-bar { padding: 0 16px 0 4px; }
+    .bar {
+      height: 6px;
+      background: var(--divider);
+      border-radius: 3px;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: var(--c-idle);
+      transition: width 0.8s ease;
+    }
+    .s-active  .bar-fill { background: var(--c-active); }
+    .s-standby .bar-fill { background: var(--c-standby); }
 
     /* ── MODE TOGGLE ── */
     .mode-toggle {
       display: flex;
       border: 1px solid var(--border);
+      border-radius: 6px;
       overflow: hidden;
+      background: var(--bg);
     }
     .mode-toggle input[type="radio"] { display: none; }
     .mode-toggle label {
       flex: 1;
       text-align: center;
-      padding: 7px 0;
-      font-family: var(--mono);
-      font-size: 0.6rem;
-      letter-spacing: 0.18em;
+      padding: 8px 0;
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: #2e2e3a;
-      background: #0e0e11;
+      color: var(--muted);
+      background: transparent;
       cursor: pointer;
-      transition: color 0.1s, background 0.1s, box-shadow 0.1s;
+      transition: color 0.1s, background 0.1s;
       user-select: none;
     }
     .mode-toggle label + label { border-left: 1px solid var(--border); }
 
-    .mode-toggle input:checked + .opt-on {
-      color: var(--green);
-      background: #0e1a12;
-      box-shadow: inset 0 0 0 1px rgba(74,222,128,.25), inset 0 -2px 8px rgba(74,222,128,.12);
-    }
-    .mode-toggle input:checked + .opt-off {
-      color: var(--red);
-      background: #1a0e0e;
-      box-shadow: inset 0 0 0 1px rgba(248,113,113,.2), inset 0 -2px 8px rgba(248,113,113,.1);
-    }
-    .mode-toggle label:not(:has(~ input:checked)):hover,
+    .mode-toggle input:checked + .opt-on     { color: #fff; background: var(--c-active); }
+    .mode-toggle input:checked + .opt-off    { color: #fff; background: var(--c-off); }
+    .mode-toggle input:checked + .opt-sync   { color: #fff; background: var(--c-sync); }
+    .mode-toggle input:checked + .opt-biased { color: #fff; background: var(--c-biased); }
+
     .mode-toggle input:not(:checked) + label:hover {
-      color: #555568;
-      background: #131318;
+      color: var(--text);
+      background: var(--surface);
     }
   </style>
 </head>
 <body>
   <header class="site-header">
-    <h1>Hub Monitor</h1>
-    <span class="hub-serial">{{ hub_id }}</span>
+    <span class="wordmark">Hub Monitor</span>
   </header>
   <div id="error"></div>
-  <div id="ports">
-    {% for p in ports %}
-    {% set s = 'active' if (p.attached and p.mode == 'on') else ('standby' if p.attached else 'idle') %}
-    <div class="port-card s-{{ s }}">
-      <div class="card-body">
-        <div class="card-head">
-          <span class="port-label">Port {{ '%02d' | format(p.id) }}</span>
-          <span class="led {{ s if s != 'idle' else '' }}"></span>
-        </div>
 
-        {% if p.attached %}
-        <div class="metrics">
-          <div class="metric-cell">
-            <span class="metric-key">V</span>
-            <span class="metric-val">{{ "%.1f"|format(p.voltage_v) if p.voltage_v is not none else "—" }}</span>
-          </div>
-          <div class="metric-cell">
-            <span class="metric-key">I  mA</span>
-            <span class="metric-val">{{ p.current_ma if p.current_ma is not none else "—" }}</span>
-          </div>
-          <div class="metric-cell">
-            <span class="metric-key">T</span>
-            <span class="metric-val">{{ p.charging_seconds ~ "s" if p.charging_seconds is not none else "—" }}</span>
-          </div>
+  <div id="hubs-container">
+    {% for hub in hubs %}
+    <details open class="hub-section" data-hub-id="{{ hub.hub_id }}">
+      <summary class="hub-header">
+        <span class="hub-chevron">▼</span>
+        <span class="hub-label">{{ hub.hub_id }}</span>
+        <span class="hub-meta">{{ hub.ports | length }} ports · {{ hub.modes | join(' / ') }}</span>
+      </summary>
+      <div class="hub-ports">
+        <div class="row row-head">
+          <span class="col-port">Port</span>
+          <span class="col-led"></span>
+          <span class="col-v">V</span>
+          <span class="col-i">mA</span>
+          <span class="col-pwr">W</span>
+          <span class="col-time">Time</span>
+          <span class="col-bar"></span>
+          <span class="col-mode">Mode</span>
         </div>
-        {% else %}
-        <div class="no-device">no device</div>
-        {% endif %}
-
-        <div class="mode-toggle">
-          {% for m in modes %}
-          <input type="radio" name="port-mode-{{ p.id }}" id="md-{{ p.id }}-{{ m }}"
-                 value="{{ m }}" {{ 'checked' if m == p.mode else '' }}
-                 onchange="setMode({{ p.id }}, '{{ m }}')">
-          <label for="md-{{ p.id }}-{{ m }}" class="opt-{{ m }}">{{ m }}</label>
+        <div class="hub-ports-body">
+          {% for p in hub.ports %}
+          {%- set s = 'active' if (p.attached and p.mode == 'on') else ('standby' if p.attached else 'idle') -%}
+          {%- set power_w = (p.voltage_v * p.current_ma / 1000) if (p.voltage_v is not none and p.current_ma is not none and p.attached) else 0 -%}
+          {%- set bar_raw = power_w / 15 * 100 -%}
+          {%- set bar_pct = bar_raw if bar_raw < 100 else 100 -%}
+          <div class="row port-row s-{{ s }}">
+            <span class="col-port">{{ '%02d' | format(p.id) }}</span>
+            <span class="col-led"><span class="led {{ s if s != 'idle' else '' }}"></span></span>
+            <span class="col-v">{{ "%.1f" | format(p.voltage_v) if (p.voltage_v is not none and p.attached) else "—" }}</span>
+            <span class="col-i">{{ p.current_ma if (p.current_ma is not none and p.attached) else "—" }}</span>
+            <span class="col-pwr">{{ "%.1f" | format(power_w) if p.attached else "—" }}</span>
+            <span class="col-time">
+              {%- if not p.attached or p.charging_seconds is none -%}—
+              {%- elif p.charging_seconds >= 3600 -%}{{ p.charging_seconds // 3600 }}h {{ (p.charging_seconds % 3600) // 60 }}m
+              {%- elif p.charging_seconds >= 60 -%}{{ p.charging_seconds // 60 }}m {{ p.charging_seconds % 60 }}s
+              {%- else -%}{{ p.charging_seconds }}s
+              {%- endif -%}
+            </span>
+            <div class="col-bar">
+              <div class="bar">
+                <div class="bar-fill" style="width:{{ bar_pct | int }}%"></div>
+              </div>
+            </div>
+            <div class="col-mode">
+              <div class="mode-toggle">
+                {% for m in hub.modes %}
+                <input type="radio" name="port-mode-{{ hub.hub_id }}-{{ p.id }}" id="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}"
+                       value="{{ m }}" {{ 'checked' if m == p.mode else '' }}
+                       onchange="setMode('{{ hub.hub_id }}', {{ p.id }}, '{{ m }}')">
+                <label for="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}" class="opt-{{ m }}">{{ m }}</label>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
           {% endfor %}
         </div>
       </div>
-    </div>
+    </details>
     {% endfor %}
   </div>
   <script src="/static/main.js"></script>
