@@ -95,14 +95,15 @@ pytest test_ui.py -v     # UI smoke tests; starts its own server on :8001, requi
 - Framework: FastAPI + Jinja2 + vanilla JS (polling)
 - Key files:
   - `hub_backends.py` — `HubClient` ABC and all three backend implementations (see below)
-  - `hub_client.py` — thin shim: `RestApiClient as CambrionixClient`
-  - `app.py` — FastAPI routes
+  - `hub_client.py` — `discover_hubs()` factory; currently returns `CliClient.discover_serial()`
+  - `controller.py` — `HubController`: background polling layer (see below)
+  - `app.py` — FastAPI routes; reads from `HubController` cache, never touches serial directly
   - `models.py` — `PortState` dataclass (shared across all backends); `voltage_v`, `current_ma`, and `charging_seconds` are typed `| None` and may be `None` when unavailable
   - `templates/index.html`, `static/main.js` — frontend
 
 **Do not introduce a `hub.py`** — this name was used by an early prototype `CambrionixHub` class that predates `hub_backends.py`. It had the `\r`-only terminator bug that causes hub unresponsive state (see Known issues). All hub logic now lives in `hub_backends.py`.
 
-There is no formal test framework (no pytest). `test_api.py` is a standalone diagnostic/smoke-test script with a manual CLI dispatch (`if __name__ == "__main__"`).
+`test_api.py` is a standalone diagnostic/smoke-test script with a manual CLI dispatch (`if __name__ == "__main__"`). `test_ui.py` uses pytest-playwright.
 
 ## Hub Backends
 
@@ -118,7 +119,7 @@ set_mode(port_id: int, mode: str) -> None
 
 | Class | Protocol | Notes |
 |---|---|---|
-| `RestApiClient` | REST v4.0 | Used by the web app; modes are `"on"`/`"off"` |
+| `RestApiClient` | REST v4.0 | Modes are `"on"`/`"off"` |
 | `JsonRpcClient` | JSON-RPC v3.9 | TCP socket to port 43424; lazy-connects, keeps socket alive; `get_ports()` uses `PortsInfo` + batch RPC for speed, `get_port()` fetches full vitals including energy |
 | `CliClient` | Firmware CLI | Use `CliClient.via_serial(tty)` for direct serial or `CliClient.via_http(hub_id)` to proxy through the REST service |
 
@@ -184,16 +185,25 @@ All three backends determine supported modes dynamically from the hub's firmware
 
 The hub ID is the USB serial number assigned by the OS (e.g. `DK0F9SOT`), not the firmware `sn` field (which is zeroed on some hubs). `RestApiClient` and `JsonRpcClient` receive it directly from the service. `CliClient` reads it from the OS via `udevadm info` (`ID_SERIAL_SHORT`) for `SerialTransport`, or uses the stored hub ID for `ApiProxyTransport`.
 
+## Controller
+
+`HubController` (`controller.py`) owns all serial port access. A daemon thread calls `discover_hubs()`, polls each hub, and stores the result in `_cache`. Web routes read from the cache — no serial I/O per request, no port contention under concurrent browser tabs.
+
+Two locks are intentionally separate:
+- `_serial_lock` — held during serial I/O (discovery + polling, or mode writes)
+- `_cache_lock` — held only for the list swap; web reads never wait for hardware
+
+`set_mode()` is write-through: it acquires `_serial_lock`, opens a fresh connection, sends the command, and closes. The next poll cycle reflects the change.
+
 ## Web app API endpoints
 
 The FastAPI app (`app.py`) exposes:
 
-- `GET /` — renders `index.html` with initial port state (SSR)
-- `GET /api/ports` — returns `list[PortState]` as JSON; polled every 2 s by the frontend
-- `GET /api/modes` — returns `list[str]` of supported mode strings
-- `POST /api/ports/{port_id}/mode` — body `{"mode": "..."}`, validates against `supported_modes()`, calls `hub.set_mode()`
+- `GET /` — renders `index.html` with initial hub/port state (SSR from cache)
+- `GET /api/hubs` — returns `list[HubDict]` as JSON; polled every 2 s by the frontend
+- `POST /api/hubs/{hub_id}/ports/{port_id}/mode` — body `{"mode": "..."}`, validates against cached modes, calls `hub.set_mode()`
 
-The `hub` singleton in `app.py` is a module-level `CambrionixClient()` (i.e. `RestApiClient`). It is not thread-safe beyond what FastAPI's default single-process worker provides.
+`app.py` holds a module-level `HubController` instance. Routes are read-only views of the cache except mode writes, which serialize through `_serial_lock`.
 
 ## Commit conventions
 
