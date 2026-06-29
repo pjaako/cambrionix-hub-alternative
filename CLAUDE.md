@@ -84,6 +84,11 @@ python test_api.py sync-wakeup-test <hub_id> <port_id>    # nudge stuck-off port
 
 The default invocation calls `check_api()` first and exits early with a clear message if the service is unreachable.
 
+```bash
+source venv/bin/activate
+pytest test_ui.py -v     # UI smoke tests; starts its own server on :8001, requires hub accessible
+```
+
 ## Tech Stack
 
 - Language: Python 3.11+
@@ -92,7 +97,7 @@ The default invocation calls `check_api()` first and exits early with a clear me
   - `hub_backends.py` — `HubClient` ABC and all three backend implementations (see below)
   - `hub_client.py` — thin shim: `RestApiClient as CambrionixClient`
   - `app.py` — FastAPI routes
-  - `models.py` — `PortState` dataclass (shared across all backends)
+  - `models.py` — `PortState` dataclass (shared across all backends); `voltage_v`, `current_ma`, and `charging_seconds` are typed `| None` and may be `None` when unavailable
   - `templates/index.html`, `static/main.js` — frontend
 
 **Do not introduce a `hub.py`** — this name was used by an early prototype `CambrionixHub` class that predates `hub_backends.py`. It had the `\r`-only terminator bug that causes hub unresponsive state (see Known issues). All hub logic now lives in `hub_backends.py`.

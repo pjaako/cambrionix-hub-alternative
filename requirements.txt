@@ -4,3 +4,5 @@ jinja2
 httpx
 python-multipart
 pyserial
+pytest
+pytest-playwright

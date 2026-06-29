@@ -426,6 +426,9 @@ class ApiProxyTransport(CliTransport):
         resp.raise_for_status()
         return resp.text
 
+    def close(self) -> None:
+        self._client.close()
+
 
 # ---------------------------------------------------------------------------
 # CLI API
@@ -487,6 +490,9 @@ class CliClient(HubClient):
         if self._hub_serial is None:
             self._parse_id()
         return self._hub_serial
+
+    def close(self) -> None:
+        self._transport.close()
 
     def _parse_id(self) -> None:
         raw = self._transport.send_command("id")
