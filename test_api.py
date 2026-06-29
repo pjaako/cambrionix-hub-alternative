@@ -301,6 +301,7 @@ def test_backends():
     """Exercise all four HubClient backends, each printed in full before the next.
     """
     print(
+        "\n"
         "Note: CLI/serial requires the CambrionixApiService to be stopped (exclusive serial access).\n"
         "REST, RPC, and CLI/http require it to be running.\n"
         "At least one backend is expected to fail on every run.\n"
@@ -309,10 +310,9 @@ def test_backends():
     from hub_backends import RestApiClient, JsonRpcClient, CliClient
 
     backends = [
-        ("REST",       RestApiClient.discover),
-        ("RPC",        JsonRpcClient.discover),
-        ("CLI/http",   CliClient.discover_http),
-        ("CLI/serial", CliClient.discover_serial),
+        ("REST",     RestApiClient.discover),
+        ("RPC",      JsonRpcClient.discover),
+        ("CLI/http", CliClient.discover_http),
     ]
 
     all_hubs = []
@@ -324,29 +324,46 @@ def test_backends():
             print(f"{label} discover failed: {e}\n")
             hubs = []
         for hub in hubs:
-            print(f"=== {label} [{hub.hub_id}] ===")
-            try:
-                print(f"  hub_id:          {hub.hub_id}")
-                print(f"  supported_modes: {hub.supported_modes()}")
-                ports = hub.get_ports()
-                print(f"  get_ports:")
-                for p in ports:
-                    print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
-                          f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
-                attached = next((p.id for p in ports if p.attached), None)
-                if attached is not None:
-                    p = hub.get_port(attached)
-                    print(f"  get_port({attached}): attached={p.attached} mode={p.mode} "
-                          f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
-            except Exception as e:
-                print(f"  FAILED: {e}")
-            print()
+            _print_hub(label, hub)
         all_hubs.extend(hubs)
+
+    # CLI/serial: probe USB-only ports and report a breakdown
+    try:
+        cli_hubs, inaccessible, other = CliClient._classify_usb_serial()
+        total = len(cli_hubs) + inaccessible + other
+        summary = (f"{total} USB serial port(s): "
+                   f"{inaccessible} inaccessible, {len(cli_hubs)} Cambrionix hub(s), {other} other device(s)")
+        print(f"CLI/serial discover: {summary}\n")
+        for hub in cli_hubs:
+            _print_hub("CLI/serial", hub)
+        all_hubs.extend(cli_hubs)
+    except Exception as e:
+        print(f"CLI/serial discover failed: {e}\n")
 
     for hub in all_hubs:
         if hasattr(hub, "close"):
             hub.close()
     return True
+
+
+def _print_hub(label: str, hub) -> None:
+    print(f"=== {label} [{hub.hub_id}] ===")
+    try:
+        print(f"  hub_id:          {hub.hub_id}")
+        print(f"  supported_modes: {hub.supported_modes()}")
+        ports = hub.get_ports()
+        print(f"  get_ports:")
+        for p in ports:
+            print(f"    port {p.id}: attached={p.attached} mode={p.mode} "
+                  f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+        attached = next((p.id for p in ports if p.attached), None)
+        if attached is not None:
+            p = hub.get_port(attached)
+            print(f"  get_port({attached}): attached={p.attached} mode={p.mode} "
+                  f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+    except Exception as e:
+        print(f"  FAILED: {e}")
+    print()
 
 
 if __name__ == "__main__":

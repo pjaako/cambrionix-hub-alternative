@@ -365,21 +365,27 @@ class SerialTransport(CliTransport):
             self._ser.reset_input_buffer()
 
     def send_command(self, cmd: str) -> str:
-        self._ensure_open()
-        self._ser.reset_input_buffer()
-        self._ser.write(f"{cmd}\r\n".encode())
-        response = ""
-        start = time.time()
-        while True:
-            line = self._ser.readline().decode("utf-8", errors="ignore")
-            if not line:
-                if response or time.time() - start > self._timeout:
+        try:
+            self._ensure_open()
+            self._ser.reset_input_buffer()
+            self._ser.write(f"{cmd}\r\n".encode())
+            response = ""
+            start = time.time()
+            while True:
+                line = self._ser.readline().decode("utf-8", errors="ignore")
+                if not line:
+                    if response or time.time() - start > self._timeout:
+                        break
+                    continue
+                response += line
+                if ">>" in line:
                     break
-                continue
-            response += line
-            if ">>" in line:
-                break
-        return response
+            return response
+        except serial.SerialException:
+            raise
+        except OSError as e:
+            self._ser = None  # force reopen on next call
+            raise serial.SerialException(f"{self._port}: {e}") from e
 
     def hub_serial(self) -> str | None:
         import subprocess
@@ -427,17 +433,32 @@ class ApiProxyTransport(CliTransport):
 
 class CliClient(HubClient):
     @classmethod
-    def discover_serial(cls) -> list["CliClient"]:
+    def _classify_usb_serial(cls) -> tuple[list["CliClient"], int, int]:
+        """Probe all USB serial ports in one pass.
+
+        Returns (hubs, inaccessible_count, other_count).
+        inaccessible: port opened but OS rejected it (busy, permission denied).
+        other: port opened but did not respond as a Cambrionix hub.
+        """
         from serial.tools import list_ports
-        found = []
+        hubs, inaccessible, other = [], 0, 0
         for p in list_ports.comports():
+            if p.vid is None:
+                continue
             client = cls.via_serial(p.device)
             try:
                 client.hub_id
+                hubs.append(client)
+            except serial.SerialException:
+                inaccessible += 1
             except Exception:
-                continue
-            found.append(client)
-        return found
+                other += 1
+        return hubs, inaccessible, other
+
+    @classmethod
+    def discover_serial(cls) -> list["CliClient"]:
+        hubs, _, _ = cls._classify_usb_serial()
+        return hubs
 
     @classmethod
     def discover_http(cls, base: str = _REST_BASE) -> list["CliClient"]:
@@ -526,7 +547,7 @@ class CliClient(HubClient):
         self._transport.send_command(f"mode {cli_mode} {port_id}")
 
     def _parse_state_line(self, parts: list[str]) -> PortState:
-        # PDSync column order: port, voltage_10mV, current_mA, flags, time_s, energy_mwh_or_x, power_W
+        # PDSync column order: port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W
         def _int(v: str) -> int | None:
             try:
                 return int(v)

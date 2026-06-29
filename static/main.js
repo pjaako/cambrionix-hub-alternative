@@ -48,11 +48,17 @@ async function refresh() {
         const res = await fetch('/api/hubs');
         if (!res.ok) throw new Error(res.statusText);
         const hubs = await res.json();
-        for (const hub of hubs) {
-            const section = document.querySelector(`.hub-section[data-hub-id="${hub.hub_id}"]`);
-            if (section) {
-                section.querySelector('.hub-ports-body').innerHTML =
-                    hub.ports.map(p => renderPort(p, hub.hub_id, hub.modes)).join('');
+        const container = document.getElementById('hubs-container');
+        if (hubs.length === 0) {
+            container.innerHTML = '<p class="no-hubs">No hubs detected. Check that the hub is connected and powered on.</p>';
+        } else {
+            for (const hub of hubs) {
+                const section = container.querySelector(`.hub-section[data-hub-id="${hub.hub_id}"]`);
+                if (section) {
+                    section.querySelector('.hub-ports-body').innerHTML = hub.error
+                        ? `<div class="hub-error">${hub.error}</div>`
+                        : hub.ports.map(p => renderPort(p, hub.hub_id, hub.modes)).join('');
+                }
             }
         }
         document.getElementById('error').textContent = '';

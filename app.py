@@ -46,14 +46,23 @@ def index(request: Request):
 
 @app.get("/api/hubs")
 def api_hubs():
-    return [
-        {
-            "hub_id": h.hub_id,
-            "modes": h.supported_modes(),
-            "ports": [asdict(p) for p in h.get_ports()],
-        }
-        for h in hubs
-    ]
+    result = []
+    for h in hubs:
+        try:
+            result.append({
+                "hub_id": h.hub_id,
+                "modes": h.supported_modes(),
+                "ports": [asdict(p) for p in h.get_ports()],
+                "error": None,
+            })
+        except Exception as e:
+            result.append({
+                "hub_id": h.hub_id,
+                "modes": [],
+                "ports": [],
+                "error": str(e),
+            })
+    return result
 
 
 @app.post("/api/hubs/{hub_id}/ports/{port_id}/mode")

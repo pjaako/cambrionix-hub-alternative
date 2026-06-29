@@ -117,6 +117,20 @@
     /* ── PORT TABLE ── */
     .hub-ports { overflow-x: auto; }
 
+    .hub-error {
+      padding: 16px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--c-off);
+    }
+
+    .no-hubs {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--muted);
+      padding: 8px 0;
+    }
+
     /* ── SHARED ROW GRID ── */
     .row {
       display: grid;
@@ -247,6 +261,9 @@
   <div id="error"></div>
 
   <div id="hubs-container">
+    {% if not hubs %}
+    <p class="no-hubs">No hubs detected. Check that the hub is connected and powered on.</p>
+    {% endif %}
     {% for hub in hubs %}
     <details open class="hub-section" data-hub-id="{{ hub.hub_id }}">
       <summary class="hub-header">
