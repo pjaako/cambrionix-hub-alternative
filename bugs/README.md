@@ -5,10 +5,10 @@ main docs since they describe defects in the upstream service, not this project.
 includes environment details, exact repro steps (request/response pairs), and a workaround
 where one exists.
 
-| Report | Summary | Workaround |
-|---|---|---|
-| [bug_report_rest_api_missing_energy_wh.md](bug_report_rest_api_missing_energy_wh.md) | `GET .../ports/{portId}` omits the `energy` field required by its own OpenAPI schema. Confirmed ≥4.0.0, still present in 4.0.1. | **Implemented:** `RestApiClient._fetch_energies()` sends a `state` CLI command via `/command` and merges the result into REST responses. |
-| [bug_report_rest_api_mode_off_unrecoverable.md](bug_report_rest_api_mode_off_unrecoverable.md) | `POST .../ports/{portId}/mode {"mode":"on"}` reports success while the port stays off after a prior `"off"`. Root-caused to the service layer, not the firmware. Confirmed ≥4.0.0, still present in 4.0.1. | **Implemented:** `RestApiClient.set_mode("on")` bypasses the broken endpoint and sends `mode c <portId>` via the firmware CLI `/command` proxy directly. |
+| Report | Summary | Status | Workaround |
+|---|---|---|---|
+| [bug_report_rest_api_missing_energy_wh.md](bug_report_rest_api_missing_energy_wh.md) | `GET .../ports/{portId}` omits the `energy` field required by its own OpenAPI schema. Confirmed ≥4.0.0 through 4.0.1. | **Appears fixed in 4.1.2** — field present, verified 2026-08-03. | **Implemented (retained pending soak time):** `RestApiClient._fetch_energies()` sends a `state` CLI command via `/command` and merges the result into REST responses. |
+| [bug_report_rest_api_mode_off_unrecoverable.md](bug_report_rest_api_mode_off_unrecoverable.md) | `POST .../ports/{portId}/mode {"mode":"on"}` reports success while the port stays off after a prior `"off"`. Root-caused to the service layer, not the firmware. Confirmed ≥4.0.0 through 4.0.1, previously 100% reproducible. | **Appears fixed in 4.1.2** — two clean off→on round trips verified 2026-08-03. | **Implemented (retained pending soak time):** `RestApiClient.set_mode("on")` bypasses the broken endpoint and sends `mode c <portId>` via the firmware CLI `/command` proxy directly. |
 
 ## Reproduction scripts
 

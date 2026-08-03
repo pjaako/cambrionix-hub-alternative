@@ -135,3 +135,7 @@ Energy tracking per charging session is the primary use case for third-party app
 **Implemented in `RestApiClient` (this project):** `_fetch_energies()` sends a `state` command to the hub's firmware CLI via `POST /api/v1/hubs/{hubId}/command` and parses the energy column (`parts[6]`, Wh as float) for all ports in a single request. The result is merged into the REST response in `get_ports()` and `get_port()`. This workaround will remain active until the REST API is fixed — no version check is applied since the bug persists across at least 4.0.0 and 4.0.1.
 
 Alternative without using this project: query `Port.N.Energy_Wh` via JSON-RPC over TCP on port 43424 in parallel with REST API calls.
+
+## Update (2026-08-03): appears fixed in 4.1.2
+
+`GET /api/v1/hubs/DK0F9SOT/ports/1` on service version 4.1.2 (commit `89c8fa326ecb701f862d90f6ab93e5ddc77fb4aa`, branch `release`) returned `power.charge.charging.energy: {"used": 70.0, "unit": "mWh"}` while port 1 was actively charging — the field is now present. This project's workaround (`RestApiClient._fetch_energies()`) has been left in place pending more soak time on 4.1.2; it is a no-op once the native field is populated correctly.

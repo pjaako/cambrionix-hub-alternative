@@ -134,3 +134,7 @@ Any application built on this REST API that exposes an "off" control (as this pr
 **Implemented in `RestApiClient` (this project):** `set_mode(port_id, "on")` bypasses the broken REST endpoint entirely and sends `mode c <portId>` to the hub's firmware CLI via `POST /api/v1/hubs/{hubId}/command`. This is the same mechanism confirmed in the isolation test above. No version check is applied — the bug persists across at least 4.0.0 and 4.0.1, and a narrower check would silently break if a future version still carries the bug. The `"off"` path continues to use the normal REST endpoint, which works correctly.
 
 A full hub reboot (`POST /api/v1/hubs/{hubId}/reboot`) also restores the port but interrupts every other attached device on that hub.
+
+## Update (2026-08-03): appears fixed in 4.1.2
+
+Re-ran `bugs/reproduce_mode_off_bug.py DK0F9SOT 1` twice against service version 4.1.2 (commit `89c8fa326ecb701f862d90f6ab93e5ddc77fb4aa`, branch `release`). Both runs completed a clean off→on round trip via the REST endpoint alone (`mode='off'` → `POST {"mode":"off"}` → `POST {"mode":"on"}` → `mode='on'`, current resumed), with no stuck state and no firmware-CLI intervention needed to recover. Previously this was 100% reproducible across 4.0.0–4.0.1. This project's workaround (`RestApiClient.set_mode("on")` via firmware CLI) has been left in place pending more soak time on 4.1.2.
