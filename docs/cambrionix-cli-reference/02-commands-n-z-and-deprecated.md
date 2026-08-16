@@ -98,7 +98,7 @@ Displays the current status of each port, including mode, current, flags, and ch
 - **c**: Power enabled, no device detected
 
 *Column 3 (Quick Charge):*
-- **_**: QC disallowed
+- **_**: QC disallowed (Community Note: Some devices, e.g. PDSync-4, return a hyphen `-` instead)
 - **+**: QC allowed but not enabled
 - **q**: QC enabled but not in use
 - **Q**: QC in use

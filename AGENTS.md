@@ -197,6 +197,8 @@ Both `CliClient` and `JsonRpcClient` decode flags from the `state` command / `Po
 | `E` / `R` | **E**rror present / **R**ebooted recently |
 | `T` | **T**heft (Device was removed unexpectedly) |
 | `r` | Vbus is being **r**eset during mode change |
+| `-` / `_` | **QC disallowed** (Quick Charge not active/supported; experimentally proved with PDSync-4) |
+| `+` / `q` / `Q` | **Quick Charge** (Allowed / Enabled / In-use) |
 | absence of O/S/B | On (charging) |
 
 The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W`. `energy_Wh` is in column index 6 (0-based); `"x"` means still charging (treated as `None`).
