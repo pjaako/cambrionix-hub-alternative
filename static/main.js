@@ -1,4 +1,4 @@
-let modePending = false;
+let pendingPorts = new Map(); // "hubId-portId" -> desiredMode
 
 function fmt(seconds) {
     if (seconds == null) return '—';
@@ -11,9 +11,13 @@ function fmt(seconds) {
 }
 
 function renderPort(p, hubId, modes) {
-    const s = p.attached && p.mode === 'on' ? 'active'
+    const key = `${hubId}-${p.id}`;
+    const isPending = pendingPorts.has(key);
+    const displayedMode = isPending ? pendingPorts.get(key) : p.mode;
+
+    const s = isPending ? 'transition' : (p.attached && p.mode === 'on' ? 'active'
             : p.attached                    ? 'standby'
-            :                                 'idle';
+            :                                 'idle');
     const powerW = p.attached && p.voltage_v != null && p.current_ma != null
         ? p.voltage_v * p.current_ma / 1000 : 0;
     const barPct = Math.min(powerW / 15 * 100, 100).toFixed(0);
@@ -21,21 +25,22 @@ function renderPort(p, hubId, modes) {
 
     const toggle = modes.map(m => `
         <input type="radio" name="${namePrefix}" id="md-${hubId}-${p.id}-${m}"
-               value="${m}" ${m === p.mode ? 'checked' : ''}
-               onchange="setMode('${hubId}', ${p.id}, '${m}')">
+               value="${m}" ${m === displayedMode ? 'checked' : ''}
+               onchange="setMode('${hubId}', ${p.id}, '${m}')"
+               ${isPending ? 'disabled' : ''}>
         <label for="md-${hubId}-${p.id}-${m}" class="opt-${m}">${m}</label>`
     ).join('');
 
-    return `<div class="row port-row s-${s}">
+    return `<div class="row port-row s-${s} ${isPending ? 'pending' : ''}">
       <span class="col-port">${String(p.id).padStart(2, '0')}</span>
       <span class="col-led"><span class="led ${s !== 'idle' ? s : ''}"></span></span>
-      <span class="col-v">${p.attached && p.voltage_v != null ? p.voltage_v.toFixed(1) : '—'}</span>
-      <span class="col-i">${p.attached && p.current_ma != null ? p.current_ma : '—'}</span>
-      <span class="col-pwr">${p.attached ? powerW.toFixed(1) : '—'}</span>
-      <span class="col-time">${p.attached ? fmt(p.charging_seconds) : '—'}</span>
+      <span class="col-v">${p.attached && !isPending && p.voltage_v != null ? p.voltage_v.toFixed(1) : '—'}</span>
+      <span class="col-i">${p.attached && !isPending && p.current_ma != null ? p.current_ma : '—'}</span>
+      <span class="col-pwr">${p.attached && !isPending ? powerW.toFixed(1) : '—'}</span>
+      <span class="col-time">${p.attached && !isPending ? fmt(p.charging_seconds) : '—'}</span>
       <div class="col-bar">
         <div class="bar">
-          <div class="bar-fill" style="width:${barPct}%"></div>
+          <div class="bar-fill" style="width:${isPending ? 0 : barPct}%"></div>
         </div>
       </div>
       <div class="col-mode"><div class="mode-toggle">${toggle}</div></div>
@@ -64,7 +69,6 @@ function renderHub(hub) {
 }
 
 async function refresh() {
-    if (modePending) return;
     try {
         const res = await fetch('/api/hubs');
         if (!res.ok) throw new Error(res.statusText);
@@ -78,6 +82,14 @@ async function refresh() {
 
             // update or create each hub section
             for (const hub of hubs) {
+                // Clear pending ports that have reached their target state
+                for (const p of hub.ports) {
+                    const key = `${hub.hub_id}-${p.id}`;
+                    if (pendingPorts.has(key) && pendingPorts.get(key) === p.mode) {
+                        pendingPorts.delete(key);
+                    }
+                }
+
                 let section = container.querySelector(`.hub-section[data-hub-id="${hub.hub_id}"]`);
                 if (!section) {
                     container.insertAdjacentHTML('beforeend', renderHub(hub));
@@ -102,18 +114,45 @@ async function refresh() {
 }
 
 async function setMode(hubId, portId, mode) {
-    modePending = true;
+    const key = `${hubId}-${portId}`;
+    pendingPorts.set(key, mode);
+    
+    // Immediate local UI refresh to show transition state
+    const container = document.getElementById('hubs-container');
+    const section = container.querySelector(`.hub-section[data-hub-id="${hubId}"]`);
+    if (section) {
+        refresh();
+    }
+    
     try {
-        await fetch(`/api/hubs/${hubId}/ports/${portId}/mode`, {
+        const res = await fetch(`/api/hubs/${hubId}/ports/${portId}/mode`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mode }),
         });
+        if (!res.ok) throw new Error(await res.text());
+    } catch (e) {
+        document.getElementById('error').textContent = e.message;
+        pendingPorts.delete(key);
+        refresh();
+    }
+}
+
+async function manualRefresh() {
+    const btn = document.querySelector('.btn-refresh');
+    btn.classList.add('loading');
+    btn.textContent = 'Scanning...';
+    try {
+        const res = await fetch('/api/hubs/discover', { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        // Wait a bit for discovery to complete before refreshing UI
+        await new Promise(r => setTimeout(r, 1000));
+        await refresh();
     } catch (e) {
         document.getElementById('error').textContent = e.message;
     } finally {
-        modePending = false;
-        refresh();
+        btn.classList.remove('loading');
+        btn.textContent = 'Refresh Hubs';
     }
 }
 

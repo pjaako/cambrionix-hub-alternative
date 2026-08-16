@@ -23,6 +23,8 @@
       --bg-standby: #FFFBEB;
       --c-idle:     #C4CBDA;
       --bg-idle:    #FFFFFF;
+      --c-transition: #94A3B8;
+      --bg-transition: #F8FAFC;
 
       --c-off:      #DC2626;
       --c-sync:     #2563EB;
@@ -46,6 +48,30 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 24px;
+    }
+    .btn-refresh {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-refresh:hover {
+      background: var(--bg);
+      color: var(--text);
+      border-color: var(--muted);
+    }
+    .btn-refresh:active {
+      transform: translateY(1px);
+    }
+    .btn-refresh.loading {
+      opacity: 0.6;
+      pointer-events: none;
     }
     .wordmark {
       font-size: 12px;
@@ -168,6 +194,11 @@
     .s-active  { background: linear-gradient(to right, var(--c-active)  0, var(--c-active)  4px, var(--bg-active)  4px); }
     .s-standby { background: linear-gradient(to right, var(--c-standby) 0, var(--c-standby) 4px, var(--bg-standby) 4px); }
     .s-idle    { background: linear-gradient(to right, var(--c-idle)    0, var(--c-idle)    4px, var(--bg-idle)    4px); }
+    .s-transition { background: linear-gradient(to right, var(--c-transition) 0, var(--c-transition) 4px, var(--bg-transition) 4px); }
+
+    .port-row.pending {
+      opacity: 0.6;
+    }
 
     /* ── PORT NUMBER ── */
     .col-port {
@@ -189,6 +220,13 @@
     }
     .led.active  { background: var(--c-active); }
     .led.standby { background: var(--c-standby); }
+    .led.transition { background: var(--c-transition); animation: pulse 1.5s infinite; }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.4; }
+      100% { opacity: 1; }
+    }
 
     /* ── MEASUREMENT VALUES ── */
     .col-v, .col-i, .col-pwr, .col-time {
@@ -257,6 +295,7 @@
 <body>
   <header class="site-header">
     <span class="wordmark">Hub Monitor</span>
+    <button class="btn-refresh" onclick="manualRefresh()" title="Scan for hubs">Refresh Hubs</button>
   </header>
   <div id="error"></div>
 

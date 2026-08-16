@@ -41,7 +41,13 @@ def api_hubs():
     return hub.get_hubs()
 
 
-@app.post("/api/hubs/{hub_id}/ports/{port_id}/mode")
+@app.post("/api/hubs/discover", status_code=202)
+def api_discover():
+    hub.discover()
+    return {"status": "accepted", "action": "discover"}
+
+
+@app.post("/api/hubs/{hub_id}/ports/{port_id}/mode", status_code=202)
 def api_set_mode(hub_id: str, port_id: int, body: ModeRequest):
     hubs_snapshot = hub.get_hubs()
     hub_entry = next((h for h in hubs_snapshot if h["hub_id"] == hub_id), None)
@@ -50,11 +56,8 @@ def api_set_mode(hub_id: str, port_id: int, body: ModeRequest):
     valid = hub_entry["modes"]
     if body.mode not in valid:
         raise HTTPException(status_code=422, detail=f"mode must be one of {valid}")
-    try:
-        hub.set_mode(hub_id, port_id, body.mode)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Hub {hub_id!r} not found")
-    return {"mode": body.mode}
+    hub.set_mode(hub_id, port_id, body.mode)
+    return {"status": "accepted", "hub_id": hub_id, "port_id": port_id, "mode": body.mode}
 
 
 if __name__ == "__main__":
