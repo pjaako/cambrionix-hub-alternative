@@ -8,6 +8,31 @@ import urllib.error
 HOST = '127.0.0.1'
 PORT = 43424
 
+FLAG_DESCRIPTIONS = {
+    'A': 'Attached',
+    'D': 'Detached',
+    'C': 'Charging',
+    'I': 'Idle',
+    'F': 'Finished',
+    'P': 'Profiling',
+    'S': 'Sync',
+    'O': 'Off',
+    'B': 'Biased',
+    'E': 'Error',
+    'R': 'Rebooted',
+    'T': 'Theft',
+    'r': 'Resetting',
+}
+
+
+def describe_flags(flags_str):
+    """Return a human-readable description of the flag string."""
+    if not flags_str:
+        return "None"
+    parts = flags_str.split()
+    descs = [FLAG_DESCRIPTIONS.get(f, f"Unknown({f})") for f in parts]
+    return f"{flags_str} ({', '.join(descs)})"
+
 
 def firmware_command(hub_id, command_text, host=HOST, port=PORT):
     """Send raw text command(s) straight to the hub's own firmware CLI via
@@ -147,7 +172,8 @@ def test_cambrionix_api(host=HOST, port=PORT):
 
             print(f"\nAttached devices: {len(attached)}")
             for info in attached:
-                print(f"  Port {info['Port']}: {info.get('Current_mA', 0)} mA  flags={info.get('Flags', '')}")
+                f_raw = info.get('Flags', '')
+                print(f"  Port {info['Port']}: {info.get('Current_mA', 0)} mA  flags={describe_flags(f_raw)}")
 
             if attached:
                 # Prefer a port drawing current; fall back to the first attached port

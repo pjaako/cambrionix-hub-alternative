@@ -145,11 +145,14 @@ The named constructors `CliClient.via_serial()` and `CliClient.via_http()` selec
 Both `CliClient` and `JsonRpcClient` decode flags from the `state` command / `PortsInfo.Flags`:
 
 | Flag | Meaning |
-|------|---------|
-| `O`  | Off |
-| `D`  | Detached |
-| `S`  | Sync mode |
-| `B`  | Biased mode |
+| :--- | :--- |
+| `A` / `D` | **A**ttached / **D**etached (Device presence) |
+| `C` / `I` / `F` | **C**harging / **I**dle / **F**inished charging |
+| `P` | **P**rofiling (Detecting best charge profile) |
+| `S` / `O` / `B` | **S**ync / **O**ff / **B**iased mode |
+| `E` / `R` | **E**rror present / **R**ebooted recently |
+| `T` | **T**heft (Device was removed unexpectedly) |
+| `r` | Vbus is being **r**eset during mode change |
 | absence of O/S/B | On (charging) |
 
 The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W`. `energy_Wh` is in column index 6 (0-based); `"x"` means still charging (treated as `None`).
