@@ -29,6 +29,11 @@ FLAG_DESCRIPTIONS = {
     'R': 'Rebooted',
     'T': 'Theft',
     'r': 'Resetting',
+    '-': 'QC disallowed',
+    '_': 'QC disallowed',
+    '+': 'QC allowed',
+    'q': 'QC enabled',
+    'Q': 'QC in use',
 }
 
 
