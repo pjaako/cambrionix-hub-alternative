@@ -399,7 +399,7 @@ class SerialTransport(CliTransport):
         try:
             self._ensure_open()
             self._ser.reset_input_buffer()
-            logger.debug("SERIAL SEND -> %r", cmd)
+            logger.debug("SERIAL SEND [%s] -> %r", self._port, cmd)
             self._ser.write(f"{cmd}\r\n".encode())
             response = ""
             start = time.time()
@@ -407,12 +407,12 @@ class SerialTransport(CliTransport):
                 if self._ser.in_waiting > 0:
                     chunk = self._ser.read(self._ser.in_waiting).decode("utf-8", errors="ignore")
                     if chunk:
-                        logger.debug("SERIAL RECV <- %r", chunk)
                         response += chunk
                         if ">>" in response:
                             break
                 else:
                     time.sleep(0.01)
+            logger.debug("SERIAL RECV [%s] <-\n%s", self._port, response)
             return response
         except serial.SerialException:
             raise
