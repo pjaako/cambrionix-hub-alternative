@@ -403,16 +403,16 @@ class SerialTransport(CliTransport):
             self._ser.write(f"{cmd}\r\n".encode())
             response = ""
             start = time.time()
-            while True:
-                line = self._ser.readline().decode("utf-8", errors="ignore")
-                if not line:
-                    if response or time.time() - start > self._timeout:
-                        break
-                    continue
-                logger.debug("SERIAL RECV <- %r", line)
-                response += line
-                if ">>" in line:
-                    break
+            while time.time() - start < self._timeout:
+                if self._ser.in_waiting > 0:
+                    chunk = self._ser.read(self._ser.in_waiting).decode("utf-8", errors="ignore")
+                    if chunk:
+                        logger.debug("SERIAL RECV <- %r", chunk)
+                        response += chunk
+                        if ">>" in response:
+                            break
+                else:
+                    time.sleep(0.01)
             return response
         except serial.SerialException:
             raise
