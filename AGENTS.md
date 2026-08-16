@@ -71,7 +71,7 @@ The authoritative, always-current API reference is self-hosted by the running se
 
 See `bugs/README.md` for the full index. Summary:
 
-- **Serial port exclusivity**: `CambrionixApiService` holds `/dev/ttyUSB0` exclusively. Using `SerialTransport` directly while the service is running will conflict — the service will log "Unresponsive hub" errors and lose the hub. Only use `SerialTransport` when the service is stopped, or use `ApiProxyTransport` to go through the service instead.
+- **Serial port exclusivity**: `CambrionixApiService` holds `/dev/ttyUSB0` exclusively. Using `SerialTransport` directly while the service is running will conflict — the service will log "Unresponsive hub" errors and lose the hub. Only use `SerialTransport` when the service is stopped, or use `ApiProxyTransport` to go through the service instead. `SerialTransport` itself now opens with `exclusive=True` (TIOCEXCL), so any second concurrent open on the same tty — from the REST service, or from our own rediscovery racing an active poll — fails immediately with `SerialException` instead of silently interleaving reads and corrupting/dropping port lines.
 - **Hub unresponsive state**: If the hub's serial input buffer gets corrupted (e.g. commands sent without the required CR+LF terminator, or a partial write during a conflict), the hub enters an unresponsive state. A USB replug does not recover it — only a full **power cycle** (unplug from power supply) clears the firmware buffer.
 - **CR+LF terminator**: The firmware CLI requires commands terminated with `\r\n` (CR+LF). Sending `\r` alone leaves the hub waiting for LF, causing the unresponsive state described above. `SerialTransport` sends `\r\n`; `ApiProxyTransport` and the service handle this correctly.
 - `GET /api/v1/hubs/{hubId}/ports/{portId}` does not return the `energy` field (`power.charge.charging.energy`) despite it being marked `required` in the OpenAPI schema. Confirmed ≥4.0.0 through 4.0.1; **appears fixed in 4.1.2** (field now present, verified 2026-08-03). Workaround (`RestApiClient._fetch_energies()`, merges energy from a `state` CLI command via the `/command` proxy) is left in place pending more soak time on 4.1.2 — it's a no-op once the native field is populated. Full report: `bugs/bug_report_rest_api_missing_energy_wh.md`.
@@ -175,7 +175,7 @@ Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"bi
 
 `CliClient` is split into two layers: a `CliTransport` ABC (defines `send_command(cmd) -> str`) and the `CliClient` hub logic on top. Two transports exist:
 
-- `SerialTransport` — opens the TTY directly, sends `cmd\r\n`, reads until `>>` prompt. Local hubs only.
+- `SerialTransport` — opens the TTY directly, sends `cmd\r\n`, reads until `>>` prompt. Local hubs only. `send_command()` uses an idle timeout: the read deadline is pushed out each time a chunk arrives (capped by a hard overall deadline), so multi-line `state` responses aren't truncated mid-transmission on hubs with more ports.
 - `ApiProxyTransport` — sends `POST /api/v1/hubs/{hubId}/command` with plain-text body; hub serial is the hub ID passed at construction. Inherits the service's hub scope (local + remote via Cambrionix Connect).
 
 The named constructors `CliClient.via_serial()` and `CliClient.via_http()` select the transport. `SerialTransport.hub_serial()` calls `udevadm info` to read `ID_SERIAL_SHORT`; `ApiProxyTransport.hub_serial()` returns the stored hub ID.
