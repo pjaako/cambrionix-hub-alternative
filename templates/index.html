@@ -8,27 +8,25 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg:         #EDF0F5;
-      --surface:    #FFFFFF;
-      --border:     #CBD2DE;
-      --divider:    #E4E9F2;
-      --text:       #18202E;
-      --muted:      #5E6E8A;
+      --bg:         #121212;
+      --surface:    #1B1B1B;
+      --surface-2:  #262626;
+      --border:     #333333;
+      --divider:    #2A2A2A;
+      --text:       #E7E7E7;
+      --muted:      #8A8A8F;
       --mono:       'IBM Plex Mono', ui-monospace, monospace;
       --sans:       'Inter', system-ui, -apple-system, sans-serif;
 
-      --c-active:   #16A34A;
-      --bg-active:  #F0FAF5;
-      --c-standby:  #D97706;
-      --bg-standby: #FFFBEB;
-      --c-idle:     #C4CBDA;
-      --bg-idle:    #FFFFFF;
-      --c-transition: #94A3B8;
-      --bg-transition: #F8FAFC;
+      --c-active:   #FACC15;
+      --c-standby:  #F59E0B;
+      --c-idle:     #63666D;
+      --c-transition: #9CA3AF;
+      --c-neutral:  #52525B;
 
-      --c-off:      #DC2626;
-      --c-sync:     #2563EB;
-      --c-biased:   #9333EA;
+      --c-off:      #F87171;
+      --c-sync:     #60A5FA;
+      --c-biased:   #C084FC;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -111,12 +109,11 @@
       padding: 13px 20px;
       cursor: pointer;
       user-select: none;
-      background: var(--bg);
+      background: var(--surface);
       list-style: none;
     }
     .hub-header::-webkit-details-marker { display: none; }
     .hub-header::marker { display: none; }
-    .hub-section[open] .hub-header { border-bottom: 2px solid var(--border); }
 
     .hub-chevron {
       font-size: 11px;
@@ -174,14 +171,11 @@
       flex-direction: column;
       gap: 10px;
       padding: 12px 14px 14px;
-      border: 1px solid var(--divider);
-      border-top: 3px solid var(--c-idle);
+      border: 1px solid var(--border);
       border-radius: 8px;
-      background: var(--bg-idle);
+      background: var(--surface-2);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     }
-    .port-tile.s-active  { border-top-color: var(--c-active);  background: var(--bg-active); }
-    .port-tile.s-standby { border-top-color: var(--c-standby); background: var(--bg-standby); }
-    .port-tile.s-transition { border-top-color: var(--c-transition); background: var(--bg-transition); }
     .port-tile.pending { opacity: 0.6; }
 
     /* ── TILE HEADER ── */
@@ -205,8 +199,6 @@
       text-transform: uppercase;
       color: var(--muted);
     }
-    .s-active  .tile-status { color: var(--c-active); }
-    .s-standby .tile-status { color: var(--c-standby); }
 
     .led {
       width: 10px;
@@ -272,8 +264,8 @@
     }
     .mode-toggle label + label { border-left: 1px solid var(--border); }
 
-    .mode-toggle input:checked + .opt-on     { color: #fff; background: var(--c-active); }
-    .mode-toggle input:checked + .opt-off    { color: #fff; background: var(--c-off); }
+    .mode-toggle input:checked + .opt-on     { color: #1B1B1B; background: var(--c-active); }
+    .mode-toggle input:checked + .opt-off    { color: #fff; background: var(--c-neutral); }
     .mode-toggle input:checked + .opt-sync   { color: #fff; background: var(--c-sync); }
     .mode-toggle input:checked + .opt-biased { color: #fff; background: var(--c-biased); }
 
