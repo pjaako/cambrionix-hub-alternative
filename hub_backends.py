@@ -553,6 +553,7 @@ class CliClient(HubClient):
         return self._modes
 
     def get_ports(self) -> list[PortState]:
+        self.hub_id  # ensure self._fc is populated
         raw = self._transport.send_command("state")
         ports = []
         for line in raw.splitlines():
@@ -572,6 +573,7 @@ class CliClient(HubClient):
         return sorted(ports, key=lambda p: p.id)
 
     def get_port(self, port_id: int) -> PortState:
+        self.hub_id  # ensure self._fc is populated
         raw = self._transport.send_command(f"state {port_id}")
         for line in raw.splitlines():
             parts = [p.strip() for p in line.strip().split(",")]
@@ -588,7 +590,8 @@ class CliClient(HubClient):
         self._transport.send_command(f"mode {cli_mode} {port_id}")
 
     def _parse_state_line(self, parts: list[str]) -> PortState:
-        # PDSync column order: port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W
+        # PDSync: port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x
+        # Universal: port, current_mA, flags, profile_id, time_s, time_charged_or_x, energy_Wh_or_x
         def _int(v: str) -> int | None:
             try:
                 return int(v)
@@ -596,11 +599,20 @@ class CliClient(HubClient):
                 return None
 
         port_id = _int(parts[0]) or 0
-        voltage_10mv = _int(parts[1]) if len(parts) > 1 else None
-        current_ma = _int(parts[2]) if len(parts) > 2 else None
-        flags = set(parts[3].split()) if len(parts) > 3 else set()
+        
+        if self._fc == "un":
+            voltage_10mv = None
+            current_ma = _int(parts[1]) if len(parts) > 1 else None
+            flags_idx = 2
+        else:
+            voltage_10mv = _int(parts[1]) if len(parts) > 1 else None
+            current_ma = _int(parts[2]) if len(parts) > 2 else None
+            flags_idx = 3
+
+        flags_str = parts[flags_idx] if len(parts) > flags_idx else ""
+        flags = set(flags_str.split())
+        
         time_sec = _int(parts[4]) if len(parts) > 4 else None
-        # parts[5] = time_charged ('x' while still charging — skip)
         energy_str = parts[6].strip() if len(parts) > 6 else None
         try:
             energy_wh = float(energy_str) if energy_str and energy_str != "x" else 0.0
