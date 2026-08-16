@@ -15,6 +15,23 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Git/SSH Configuration
+
+When working with SSH remotes that require a passphrase, Git may fail in non-interactive sessions. To enable GUI passphrase prompts (e.g., in a KDE environment), use the following configuration:
+
+1. **Git Configuration**:
+   ```bash
+   git config --global core.askpass /usr/bin/ksshaskpass
+   ```
+
+2. **Environment Variables**:
+   Ensure `SSH_ASKPASS` and `SSH_ASKPASS_REQUIRE` are set:
+   ```bash
+   export SSH_ASKPASS=/usr/bin/ksshaskpass
+   export SSH_ASKPASS_REQUIRE=force
+   export DISPLAY=:0
+   ```
+
 ## Checking API accessibility
 
 Before running anything, confirm `CambrionixApiService` is up:
