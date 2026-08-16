@@ -1,4 +1,15 @@
+import logging
+import os
+import sys
+
 from fastapi import FastAPI, Request, HTTPException
+
+# Configure logging if debug is requested (works when imported by uvicorn)
+if "--debug" in sys.argv or os.environ.get("CAMBRIONIX_DEBUG"):
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -44,3 +55,13 @@ def api_set_mode(hub_id: str, port_id: int, body: ModeRequest):
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Hub {hub_id!r} not found")
     return {"mode": body.mode}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    # Remove --debug from sys.argv so uvicorn doesn't choke on it
+    if "--debug" in sys.argv:
+        sys.argv.remove("--debug")
+            
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
