@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import socket
 import time
 from abc import ABC, abstractmethod
@@ -35,6 +36,9 @@ def _hw_to_fc(hw: str) -> str:
     return "un"
 
 
+logger = logging.getLogger(__name__)
+
+
 class HubClient(ABC):
     @property
     @abstractmethod
@@ -61,7 +65,9 @@ class RestApiClient(HubClient):
     @classmethod
     def discover(cls, base: str = _REST_BASE) -> list["RestApiClient"]:
         try:
-            data = httpx.get(f"{base}/hubs", timeout=5).raise_for_status().json()
+            resp = httpx.get(f"{base}/hubs", timeout=5)
+            logger.debug("REST GET %s -> %s", f"{base}/hubs", resp.text)
+            data = resp.raise_for_status().json()
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             raise RuntimeError(f"CambrionixApiService not reachable at {base} — is it running?") from e
         return [cls(base, h["serialNumber"]) for h in data["result"]]
@@ -75,16 +81,19 @@ class RestApiClient(HubClient):
     @property
     def hub_id(self) -> str:
         if not self._hub:
-            data = self._client.get(f"{self._base}/hubs").raise_for_status().json()
+            resp = self._client.get(f"{self._base}/hubs")
+            logger.debug("REST GET %s -> %s", f"{self._base}/hubs", resp.text)
+            data = resp.raise_for_status().json()
             self._hub = data["result"][0]["serialNumber"]
         return self._hub
 
     def supported_modes(self) -> list[str]:
         if self._modes is None:
             hub = self.hub_id
-            data = self._client.get(
-                f"{self._base}/hubs/{hub}/ports/modes/supported"
-            ).raise_for_status().json()
+            url = f"{self._base}/hubs/{hub}/ports/modes/supported"
+            resp = self._client.get(url)
+            logger.debug("REST GET %s -> %s", url, resp.text)
+            data = resp.raise_for_status().json()
             self._modes = [m["mode"] for m in data["result"]]
         return self._modes
 
@@ -92,11 +101,14 @@ class RestApiClient(HubClient):
         # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): energy field missing
         # from port response. Fetch via firmware CLI state command as workaround.
         hub = self.hub_id
+        url = f"{self._base}/hubs/{hub}/command"
         resp = self._client.post(
-            f"{self._base}/hubs/{hub}/command",
+            url,
             content="state\n",
             headers={"Content-Type": "text/plain"},
-        ).raise_for_status()
+        )
+        logger.debug("REST POST %s (state) -> %s", url, resp.text)
+        resp.raise_for_status()
         energies: dict[int, float] = {}
         for line in resp.text.splitlines():
             parts = [p.strip() for p in line.split(",")]
@@ -114,16 +126,20 @@ class RestApiClient(HubClient):
 
     def get_ports(self) -> list[PortState]:
         hub = self.hub_id
-        data = self._client.get(f"{self._base}/hubs/{hub}/ports").raise_for_status().json()
+        url = f"{self._base}/hubs/{hub}/ports"
+        resp = self._client.get(url)
+        logger.debug("REST GET %s -> %s", url, resp.text)
+        data = resp.raise_for_status().json()
         energies = self._fetch_energies()
         ports = [self._parse(p, energies.get(p["id"], 0.0)) for p in data["result"] if p["id"] != 0]
         return sorted(ports, key=lambda p: p.id)
 
     def get_port(self, port_id: int) -> PortState:
         hub = self.hub_id
-        data = self._client.get(
-            f"{self._base}/hubs/{hub}/ports/{port_id}"
-        ).raise_for_status().json()
+        url = f"{self._base}/hubs/{hub}/ports/{port_id}"
+        resp = self._client.get(url)
+        logger.debug("REST GET %s -> %s", url, resp.text)
+        data = resp.raise_for_status().json()
         energies = self._fetch_energies()
         return self._parse(data["result"], energies.get(port_id, 0.0))
 
@@ -132,16 +148,22 @@ class RestApiClient(HubClient):
         # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): POST mode "on"
         # returns success but port stays off. Always use firmware CLI for "on".
         if mode == "on":
-            self._client.post(
-                f"{self._base}/hubs/{hub}/command",
+            url = f"{self._base}/hubs/{hub}/command"
+            resp = self._client.post(
+                url,
                 content=f"mode c {port_id}\n",
                 headers={"Content-Type": "text/plain"},
-            ).raise_for_status()
+            )
+            logger.debug("REST POST %s (mode c %d) -> %s", url, port_id, resp.text)
+            resp.raise_for_status()
             return
-        self._client.post(
-            f"{self._base}/hubs/{hub}/ports/{port_id}/mode",
+        url = f"{self._base}/hubs/{hub}/ports/{port_id}/mode"
+        resp = self._client.post(
+            url,
             json={"mode": mode},
-        ).raise_for_status()
+        )
+        logger.debug("REST POST %s (mode=%s) -> %s", url, mode, resp.text)
+        resp.raise_for_status()
 
     def _parse(self, raw: dict, energy_wh: float = 0.0) -> PortState:
         state = raw.get("state", {})
@@ -174,11 +196,14 @@ class JsonRpcClient(HubClient):
             raise RuntimeError(f"CambrionixApiService not reachable at {host}:{port} — is it running?") from e
         req_id = 1
         req = {"jsonrpc": "2.0", "id": req_id, "method": "cbrx_discover", "params": ["local"]}
-        sock.sendall(json.dumps(req).encode())
+        req_str = json.dumps(req)
+        logger.debug("RPC SEND (discover) -> %s", req_str)
+        sock.sendall(req_str.encode())
         buf = b""
         while True:
             chunk = sock.recv(65536)
             buf += chunk
+            logger.debug("RPC RECV (discover) <- %s", chunk)
             try:
                 units = json.loads(buf.decode()).get("result") or []
                 break
@@ -227,11 +252,14 @@ class JsonRpcClient(HubClient):
         req: dict = {"jsonrpc": "2.0", "id": self._req_id, "method": method}
         if params is not None:
             req["params"] = params
-        self._sock.sendall(json.dumps(req).encode())
+        req_str = json.dumps(req)
+        logger.debug("RPC SEND (%s) -> %s", method, req_str)
+        self._sock.sendall(req_str.encode())
         buf = b""
         while True:
             chunk = self._sock.recv(65536)
             buf += chunk
+            logger.debug("RPC RECV (%s) <- %s", method, chunk)
             try:
                 resp = json.loads(buf.decode())
                 if "error" in resp:
@@ -250,11 +278,14 @@ class JsonRpcClient(HubClient):
         for i, (method, params) in enumerate(requests):
             self._req_id += 1
             batch.append({"jsonrpc": "2.0", "id": self._req_id, "method": method, "params": params})
-        self._sock.sendall(json.dumps(batch).encode())
+        req_str = json.dumps(batch)
+        logger.debug("RPC SEND (batch) -> %s", req_str)
+        self._sock.sendall(req_str.encode())
         buf = b""
         while True:
             chunk = self._sock.recv(65536)
             buf += chunk
+            logger.debug("RPC RECV (batch) <- %s", chunk)
             try:
                 responses = json.loads(buf.decode())
                 by_id = {r["id"]: r.get("result") for r in responses}
@@ -368,6 +399,7 @@ class SerialTransport(CliTransport):
         try:
             self._ensure_open()
             self._ser.reset_input_buffer()
+            logger.debug("SERIAL SEND -> %r", cmd)
             self._ser.write(f"{cmd}\r\n".encode())
             response = ""
             start = time.time()
@@ -377,6 +409,7 @@ class SerialTransport(CliTransport):
                     if response or time.time() - start > self._timeout:
                         break
                     continue
+                logger.debug("SERIAL RECV <- %r", line)
                 response += line
                 if ">>" in line:
                     break
@@ -418,12 +451,14 @@ class ApiProxyTransport(CliTransport):
         return self._hub_id
 
     def send_command(self, cmd: str) -> str:
+        logger.debug("API PROXY SEND (%s) -> %r", self._hub_id, cmd)
         resp = self._client.post(
             self._url,
             content=f"{cmd}\n",
             headers={"Content-Type": "text/plain"},
         )
         resp.raise_for_status()
+        logger.debug("API PROXY RECV (%s) <- %s", self._hub_id, resp.text)
         return resp.text
 
     def close(self) -> None:

@@ -1,5 +1,7 @@
 import socket
 import json
+import logging
+import os
 import sys
 import time
 import urllib.request
@@ -7,6 +9,11 @@ import urllib.error
 
 HOST = '127.0.0.1'
 PORT = 43424
+
+if "--debug" in sys.argv or os.environ.get("CAMBRIONIX_DEBUG"):
+    logging.basicConfig(level=logging.DEBUG, format="%(message)s")
+    if "--debug" in sys.argv:
+        sys.argv.remove("--debug")
 
 FLAG_DESCRIPTIONS = {
     'A': 'Attached',
@@ -328,8 +335,10 @@ def test_backends():
     """
     print(
         "\n"
-        "Note: CLI/serial requires the CambrionixApiService to be stopped (exclusive serial access).\n"
-        "REST, RPC, and CLI/http require it to be running.\n"
+        "Note: CLI/serial requires the CambrionixApiService to be stopped (exclusive serial access):\n"
+        "  sudo systemctl stop CambrionixApiService\n"
+        "REST, RPC, and CLI/http require it to be running:\n"
+        "  sudo systemctl start CambrionixApiService\n"
         "At least one backend is expected to fail on every run.\n"
     )
 

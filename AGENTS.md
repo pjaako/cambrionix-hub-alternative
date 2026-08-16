@@ -99,11 +99,38 @@ python test_api.py fw-mode-test <hub_id> <port_id>        # toggle via firmware 
 python test_api.py sync-wakeup-test <hub_id> <port_id>    # nudge stuck-off port via sync
 ```
 
+All commands support a `--debug` flag to show raw backend communication (JSON bodies, JSON-RPC strings, and CLI text).
+
 The default invocation calls `check_api()` first and exits early with a clear message if the service is unreachable.
 
 ```bash
 source venv/bin/activate
 pytest test_ui.py -v     # UI smoke tests; starts its own server on :8001, requires hub accessible
+```
+
+## Debug Logging
+
+All backends in `hub_backends.py` include `logger.debug()` calls to capture raw communication. This is useful for diagnosing parsing errors or firmware bugs.
+
+### Enabling in tools
+
+Pass the `--debug` flag to `test_api.py`:
+```bash
+python test_api.py backends --debug
+```
+
+### Enabling in code
+
+The logging level is controlled by the standard Python `logging` module. To enable it globally in your script/app:
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+Alternatively, set the `CAMBRIONIX_DEBUG` environment variable, which `test_api.py` checks:
+```bash
+export CAMBRIONIX_DEBUG=1
+python test_api.py
 ```
 
 ## Tech Stack
