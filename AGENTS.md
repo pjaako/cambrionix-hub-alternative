@@ -1,6 +1,6 @@
 # Agent Instructions and Project Context
 
-This file provides context and instructions for AI agents working on the Cambrionix Hub Alternative project. It is maintained alongside `CLAUDE.md`, which contains equivalent guidance for Claude Code. Keep both files in sync when making decisions that affect project direction.
+This file provides context and instructions for AI agents working on the Cambrionix Hub Alternative project. It is the single source of truth for project guidance.
 
 ## Project Goal
 
@@ -228,7 +228,3 @@ The FastAPI app (`app.py`) exposes:
 ## Commit conventions
 
 Every commit must include a `Co-Authored-By` line crediting the agent that made the change (using that agent's own name and contact).
-
-## Keeping docs in sync
-
-`CLAUDE.md` (project root) mirrors this file for Claude Code. When updating AGENTS.md with decisions that affect project direction, apply the same change to CLAUDE.md.
