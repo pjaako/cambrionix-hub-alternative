@@ -392,7 +392,10 @@ class SerialTransport(CliTransport):
 
     def _ensure_open(self) -> None:
         if self._ser is None or not self._ser.is_open:
-            self._ser = serial.Serial(self._port, self._baud, timeout=self._timeout)
+            # exclusive=True prevents a second connection (e.g. a concurrent
+            # rediscovery probe) from silently interleaving reads/writes on
+            # the same tty and corrupting responses; it fails loudly instead.
+            self._ser = serial.Serial(self._port, self._baud, timeout=self._timeout, exclusive=True)
             self._ser.reset_input_buffer()
 
     def send_command(self, cmd: str) -> str:
@@ -403,11 +406,17 @@ class SerialTransport(CliTransport):
             self._ser.write(f"{cmd}\r\n".encode())
             response = ""
             start = time.time()
-            while time.time() - start < self._timeout:
+            deadline = start + self._timeout  # idle deadline: pushed out each time data arrives
+            hard_deadline = start + max(self._timeout * 5, 5.0)  # absolute cap in case the hub never goes idle
+            while True:
+                now = time.time()
+                if now >= deadline or now >= hard_deadline:
+                    break
                 if self._ser.in_waiting > 0:
                     chunk = self._ser.read(self._ser.in_waiting).decode("utf-8", errors="ignore")
                     if chunk:
                         response += chunk
+                        deadline = time.time() + self._timeout
                         if ">>" in response:
                             break
                 else:
@@ -489,8 +498,10 @@ class CliClient(HubClient):
                 hubs.append(client)
             except serial.SerialException:
                 inaccessible += 1
+                client.close()
             except Exception:
                 other += 1
+                client.close()
         return hubs, inaccessible, other
 
     @classmethod
