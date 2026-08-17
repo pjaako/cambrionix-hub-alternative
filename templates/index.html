@@ -350,16 +350,16 @@
             </div>
             <div class="tile-stats">
               <div>
-                <div class="tile-stat-label">mV</div>
-                <div class="tile-stat-value">{{ p.voltage_mv if (p.voltage_mv is not none and attached) else "—" }}</div>
+                <div class="tile-stat-label">Voltage</div>
+                <div class="tile-stat-value">{{ (p.voltage_mv ~ " mV") if (p.voltage_mv is not none and attached) else "—" }}</div>
               </div>
               <div>
-                <div class="tile-stat-label">mA</div>
-                <div class="tile-stat-value">{{ p.current_ma if (p.current_ma is not none and attached) else "—" }}</div>
+                <div class="tile-stat-label">Current</div>
+                <div class="tile-stat-value">{{ (p.current_ma ~ " mA") if attached else "—" }}</div>
               </div>
               <div>
-                <div class="tile-stat-label">mWh</div>
-                <div class="tile-stat-value">{{ p.energy_mwh if (p.energy_mwh is not none and attached) else "—" }}</div>
+                <div class="tile-stat-label">Energy</div>
+                <div class="tile-stat-value">{{ (p.energy_mwh ~ " mWh") if attached else "—" }}</div>
               </div>
               <div>
                 <div class="tile-stat-label">Time</div>

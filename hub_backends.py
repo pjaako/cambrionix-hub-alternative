@@ -212,7 +212,7 @@ class RestApiClient(HubClient):
             attachment=attachment,
             status=status,
             voltage_mv=round(sensors.get("volts", 0.0) * 1000),
-            current_ma=sensors.get("milliamps", 0),
+            current_ma=sensors.get("milliamps") or 0,
             charging_seconds=charging.get("seconds", 0),
             energy_mwh=energy_mwh,
         )
@@ -412,7 +412,7 @@ class JsonRpcClient(HubClient):
             attachment=attachment,
             status=status,
             voltage_mv=extras.get("voltage_mv", 0),
-            current_ma=info.get("Current_mA", 0),
+            current_ma=info.get("Current_mA") or 0,
             charging_seconds=extras.get("charging_seconds", 0),
             energy_mwh=extras.get("energy_mwh", 0),
         )
@@ -693,7 +693,7 @@ class CliClient(HubClient):
             attachment=attachment,
             status=status,
             voltage_mv=voltage_10mv * 10 if voltage_10mv is not None else None,
-            current_ma=current_ma,
+            current_ma=current_ma or 0,
             charging_seconds=time_sec,
             energy_mwh=energy_mwh,
         )
