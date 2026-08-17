@@ -128,9 +128,14 @@
       color: var(--text);
     }
 
+    .hub-mode-toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
+    }
     .hub-mode-toggle {
       display: flex;
-      margin-left: auto;
       border: 1px solid var(--border);
       border-radius: 6px;
       overflow: hidden;
@@ -155,6 +160,27 @@
       color: var(--text);
       background: var(--surface-2);
     }
+    .hub-mode-toggle button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      background: transparent;
+      color: var(--muted);
+    }
+    .hub-lock-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      background: none;
+      padding: 4px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.1s;
+    }
+    .hub-lock-toggle:hover { color: var(--text); }
+    .hub-lock-toggle .icon-unlocked { display: none; }
+    .hub-mode-toggle-wrap.unlocked .icon-locked { display: none; }
+    .hub-mode-toggle-wrap.unlocked .icon-unlocked { display: inline-block; }
 
     /* ── PORT GRID ── */
     .hub-ports { padding: 16px 20px; }
@@ -299,10 +325,16 @@
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">{{ hub.hub_id }}</span>
-        <div class="hub-mode-toggle">
-          {% for m in mode_order if m in hub.modes %}
-          <button type="button" onclick="event.stopPropagation(); setHubMode('{{ hub.hub_id }}', '{{ m }}')">{{ mode_labels[m] }}</button>
-          {% endfor %}
+        <div class="hub-mode-toggle-wrap">
+          <div class="hub-mode-toggle">
+            {% for m in mode_order if m in hub.modes %}
+            <button type="button" disabled onclick="event.stopPropagation(); setHubMode('{{ hub.hub_id }}', '{{ m }}'); relockHubToggle(this)">{{ mode_labels[m] }}</button>
+            {% endfor %}
+          </div>
+          <button type="button" class="hub-lock-toggle" title="Unlock hub-wide controls" onclick="event.stopPropagation(); unlockHubToggle(this)">
+            <svg class="icon-locked" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            <svg class="icon-unlocked" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.75-1.5"/></svg>
+          </button>
         </div>
       </summary>
       <div class="hub-ports">

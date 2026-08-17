@@ -78,14 +78,20 @@ function renderPort(p, hubId, modes) {
 
 function renderHub(hub) {
     const hubToggle = displayModes(hub.modes).map(({ value: m, label }) => `
-        <button type="button" onclick="event.stopPropagation(); setHubMode('${hub.hub_id}', '${m}')">${label}</button>`
+        <button type="button" disabled onclick="event.stopPropagation(); setHubMode('${hub.hub_id}', '${m}'); relockHubToggle(this)">${label}</button>`
     ).join('');
 
     return `<details open class="hub-section" data-hub-id="${hub.hub_id}">
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">${hub.hub_id}</span>
-        <div class="hub-mode-toggle">${hubToggle}</div>
+        <div class="hub-mode-toggle-wrap">
+          <div class="hub-mode-toggle">${hubToggle}</div>
+          <button type="button" class="hub-lock-toggle" title="Unlock hub-wide controls" onclick="event.stopPropagation(); unlockHubToggle(this)">
+            <svg class="icon-locked" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            <svg class="icon-unlocked" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.75-1.5"/></svg>
+          </button>
+        </div>
       </summary>
       <div class="hub-ports">
         <div class="hub-ports-body">
@@ -169,6 +175,18 @@ async function setMode(hubId, portId, mode) {
         pendingPorts.delete(key);
         refresh();
     }
+}
+
+function unlockHubToggle(unlockBtn) {
+    const wrap = unlockBtn.closest('.hub-mode-toggle-wrap');
+    wrap.classList.add('unlocked');
+    wrap.querySelectorAll('.hub-mode-toggle button').forEach(b => b.disabled = false);
+}
+
+function relockHubToggle(clickedBtn) {
+    const wrap = clickedBtn.closest('.hub-mode-toggle-wrap');
+    wrap.classList.remove('unlocked');
+    wrap.querySelectorAll('.hub-mode-toggle button').forEach(b => b.disabled = true);
 }
 
 async function setHubMode(hubId, mode) {
