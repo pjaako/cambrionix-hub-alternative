@@ -42,7 +42,7 @@ source venv/bin/activate
 uvicorn app:app --reload
 ```
 
-Open `http://localhost:8000` in your browser. The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode can be set via the dropdown on each port card.
+Open `http://localhost:8000` in your browser. The app polls `/api/hubs` every 2 seconds and updates the UI live. Each port tile has a radio-button toggle to set its mode; a padlock icon in the hub header unlocks buttons to set every port on that hub at once.
 
 ## Architecture
 
@@ -56,13 +56,14 @@ The app is built around a pluggable backend system in `hub_backends.py`. All thr
 
 All three expose the same `HubClient` interface: `hub_id()`, `supported_modes()`, `get_ports()`, `get_port()`, `set_mode()`. The `discover()` classmethods return a list of ready-to-use instances, one per connected hub.
 
-The web app (`app.py`) uses `RestApiClient` (aliased as `CambrionixClient` in `hub_client.py`). The other backends can be used directly in scripts or swapped in if needed.
+The web app (`app.py`, via `controller.py`) uses `hub_client.discover_hubs()`, currently wired to `CliClient.discover_serial()`. The other backends can be used directly in scripts or swapped in if needed.
 
 Key files:
 - `hub_backends.py` — `HubClient` ABC and all three backend implementations
-- `hub_client.py` — thin shim: `RestApiClient as CambrionixClient`
+- `hub_client.py` — `discover_hubs()` factory, currently returns `CliClient.discover_serial()`
+- `controller.py` — `HubController`: background worker thread that owns serial access, polls hubs, and queues mode/discovery commands from the web routes
 - `app.py` — FastAPI routes
-- `models.py` — `PortState` dataclass (shared across all backends)
+- `models.py` — `PortState` dataclass plus `Attachment`/`Status` `StrEnum`s (shared across all backends)
 - `templates/index.html`, `static/main.js` — frontend
 
 ## Which backend to use?

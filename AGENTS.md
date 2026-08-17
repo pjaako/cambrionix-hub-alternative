@@ -85,7 +85,7 @@ uvicorn app:app --reload
 # Open http://localhost:8000
 ```
 
-The app polls `/api/ports` every 2 seconds and updates the UI live. Port mode can be set via the dropdown on each port card.
+The app polls `/api/hubs` every 2 seconds and updates the UI live. Each port is a tile showing attachment/status, voltage, current, power, and charging time; mode is set via a radio-button toggle on the tile (off/data/power, or off/data+power on hubs without sync). A padlock icon in each hub's header gates hub-wide mode buttons that apply a mode to every port on that hub at once. A "Refresh Hubs" button triggers on-demand rediscovery.
 
 ## Running the test script
 
@@ -142,7 +142,7 @@ python test_api.py
   - `hub_client.py` — `discover_hubs()` factory; currently returns `CliClient.discover_serial()`
   - `controller.py` — `HubController`: background polling layer (see below)
   - `app.py` — FastAPI routes; reads from `HubController` cache, never touches serial directly
-  - `models.py` — `PortState` dataclass (shared across all backends); `voltage_v`, `current_ma`, and `charging_seconds` are typed `| None` and may be `None` when unavailable
+  - `models.py` — `PortState` dataclass (shared across all backends) plus the `Attachment`/`Status` `StrEnum`s; `voltage_v`, `current_ma`, and `charging_seconds` are typed `| None` and may be `None` when unavailable
   - `templates/index.html`, `static/main.js` — frontend
 
 **Do not introduce a `hub.py`** — this name was used by an early prototype `CambrionixHub` class that predates `hub_backends.py`. It had the `\r`-only terminator bug that causes hub unresponsive state (see Known issues). All hub logic now lives in `hub_backends.py`.
@@ -222,9 +222,12 @@ surfaced on `PortState`.
 
 Full reference: `docs/cambrionix-cli-reference/02-commands-n-z-and-deprecated.md:66-112`.
 
-A port has exactly one attachment value and one status value at a time. A caller of
-`hub_backend` (e.g. `GET /api/hubs`) sees these directly as `attachment`/`status` strings
-per port — e.g. `"status": "finished"`.
+A port has exactly one attachment value and one status value at a time, typed as the
+`Attachment`/`Status` `StrEnum`s in `models.py` (each has an `UNKNOWN` fallback member;
+`Status` also covers `sync`/`biased`/`profiling` for universal firmware, beyond the six
+PDSync/TS3-C10 values above). Both serialize as plain strings over JSON — a caller of
+`hub_backend` (e.g. `GET /api/hubs`) sees `attachment`/`status` as strings per port, e.g.
+`"status": "finished"`.
 
 The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W`. `energy_Wh` is in column index 6 (0-based); `"x"` means still charging (treated as `None`).
 
@@ -261,13 +264,14 @@ The hub ID is the USB serial number assigned by the OS (e.g. `DK0F9SOT`), not th
 
 ## Controller
 
-`HubController` (`controller.py`) owns all serial port access. A daemon thread calls `discover_hubs()`, polls each hub, and stores the result in `_cache`. Web routes read from the cache — no serial I/O per request, no port contention under concurrent browser tabs.
+`HubController` (`controller.py`) owns all serial port access via a single worker thread — a producer/consumer design that decouples HTTP requests from hardware I/O latency. Web routes never touch serial directly.
 
-Two locks are intentionally separate:
-- `_serial_lock` — held during serial I/O (discovery + polling, or mode writes)
-- `_cache_lock` — held only for the list swap; web reads never wait for hardware
+- `_hubs` — registry of live `HubClient` instances, keyed by hub ID; rebuilt by `_discover()` on a 60s interval, or immediately on a `discover` command
+- `_command_queue` — `set_mode`, `set_mode_all`, and `discover` requests enqueued by web routes; the worker drains it before each poll, and also services it during the inter-poll wait so a queued command doesn't sit until the next cycle
+- `_cache` / `_cache_lock` — last-known state per hub (`hub_id`, `modes`, `ports`, `error`); web reads take `_cache_lock` only for the list swap and never wait for hardware
+- A hub that fails to poll gets an `error` entry in the cache, and forces rediscovery on the next loop iteration
 
-`set_mode()` is write-through: it acquires `_serial_lock`, opens a fresh connection, sends the command, and closes. The next poll cycle reflects the change.
+`set_mode(hub_id, port_id, mode)` and `set_mode_all(hub_id, mode)` just enqueue a command and return immediately (202-style, fire-and-forget); the worker applies it via `h.set_mode(port_id, mode)` — all three backends accept `port_id=None` to mean "every port on the hub" (see `HubClient.set_mode` in `hub_backends.py`).
 
 ## Web app API endpoints
 
@@ -275,9 +279,11 @@ The FastAPI app (`app.py`) exposes:
 
 - `GET /` — renders `index.html` with initial hub/port state (SSR from cache)
 - `GET /api/hubs` — returns `list[HubDict]` as JSON; polled every 2 s by the frontend
-- `POST /api/hubs/{hub_id}/ports/{port_id}/mode` — body `{"mode": "..."}`, validates against cached modes, calls `hub.set_mode()`
+- `POST /api/hubs/discover` (202) — enqueues on-demand rediscovery
+- `POST /api/hubs/{hub_id}/ports/{port_id}/mode` (202) — body `{"mode": "..."}`, validates against cached modes, enqueues a single-port `set_mode`
+- `POST /api/hubs/{hub_id}/ports/mode` (202) — body `{"mode": "..."}`, validates against cached modes, enqueues a hub-wide `set_mode_all` (every port on the hub)
 
-`app.py` holds a module-level `HubController` instance. Routes are read-only views of the cache except mode writes, which serialize through `_serial_lock`.
+`app.py` holds a module-level `HubController` instance. Routes are read-only views of the cache except mode writes/discovery, which enqueue work for the controller's worker thread (see Controller above).
 
 ## Commit conventions
 
