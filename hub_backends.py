@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 import httpx
 import serial
 
-from models import PortState
+from models import Attachment, PortState, Status
 
 _REST_BASE = "http://localhost:43424/api/v1"
 _RPC_HOST = "127.0.0.1"
@@ -20,24 +20,26 @@ _MODE_TO_CLI = {"on": "c", "off": "o", "sync": "s", "biased": "b"}
 _MODE_FROM_CLI = {"c": "on", "o": "off", "s": "sync", "b": "biased"}
 
 # Column 1 (Attachment) flag letters -> canonical value, PDSync / TS3-C10 firmware
-_ATTACHMENT_MAP = {"A": "attached", "D": "detached", "P": "pd_contract", "C": "type_c_only"}
+_ATTACHMENT_MAP = {"A": Attachment.ATTACHED, "D": Attachment.DETACHED,
+                    "P": Attachment.PD_CONTRACT, "C": Attachment.TYPE_C_ONLY}
 
 # Column 2 (Status) flag letters -> canonical value, PDSync / TS3-C10 firmware
-_STATUS_MAP = {"I": "idle", "S": "host_connected", "C": "charging", "F": "finished",
-               "O": "off", "c": "power_no_device"}
+_STATUS_MAP = {"I": Status.IDLE, "S": Status.HOST_CONNECTED, "C": Status.CHARGING,
+               "F": Status.FINISHED, "O": Status.OFF, "c": Status.POWER_NO_DEVICE}
 
 # Universal firmware: single combined flag column, mutually exclusive per the
 # firmware docs (docs/cambrionix-cli-reference/02-commands-n-z-and-deprecated.md:66-77)
-_UNIVERSAL_STATUS_MAP = {"O": "off", "S": "sync", "B": "biased", "I": "idle",
-                          "P": "profiling", "C": "charging", "F": "finished"}
+_UNIVERSAL_STATUS_MAP = {"O": Status.OFF, "S": Status.SYNC, "B": Status.BIASED, "I": Status.IDLE,
+                          "P": Status.PROFILING, "C": Status.CHARGING, "F": Status.FINISHED}
 
 
-def _universal_status(flags: set[str]) -> str:
-    return next((v for k, v in _UNIVERSAL_STATUS_MAP.items() if k in flags), "unknown")
+def _universal_status(flags: set[str]) -> Status:
+    return next((v for k, v in _UNIVERSAL_STATUS_MAP.items() if k in flags), Status.UNKNOWN)
 
 
 # REST API power.state values -> canonical status (best-effort, see RestApiClient._parse)
-_REST_STATUS_MAP = {"charging": "charging", "idle": "idle", "finished": "finished", "off": "off"}
+_REST_STATUS_MAP = {"charging": Status.CHARGING, "idle": Status.IDLE,
+                     "finished": Status.FINISHED, "off": Status.OFF}
 
 # Supported modes by firmware class (fc field from `id` command / Hardware property)
 _FC_MODES: dict[str, list[str]] = {
@@ -190,13 +192,13 @@ class RestApiClient(HubClient):
         sensors = {s["type"]: s["value"] for s in raw.get("sensors", [])}
         power = raw.get("power", {})
         charging = power.get("charge", {}).get("charging", {})
-        attachment = "attached" if state.get("attached", False) else "detached"
+        attachment = Attachment.ATTACHED if state.get("attached", False) else Attachment.DETACHED
         # Best-effort: power.state mirrors the CLI Status column but only "charging"
         # has been observed against a live hub in this repo; other values are inferred
-        # from the CLI naming and passed through raw if unrecognized. Verify against a
-        # live hub before relying on values other than "charging".
+        # from the CLI naming. Verify against a live hub before relying on values
+        # other than "charging".
         raw_status = power.get("state", "")
-        status = _REST_STATUS_MAP.get(raw_status, raw_status or "unknown")
+        status = _REST_STATUS_MAP.get(raw_status, Status.UNKNOWN)
         return PortState(
             id=raw["id"],
             attachment=attachment,
@@ -391,10 +393,10 @@ class JsonRpcClient(HubClient):
             # Best-effort, unverified against a live hub: per test_api.py, PDSync/PD
             # hubs report attachment via a separate boolean rather than the 'A' flag,
             # so Flags is assumed to hold Status(+QC) only here.
-            attachment = "attached" if info.get("Attached") else "detached"
-            status = _STATUS_MAP.get(flag_tokens[0], "unknown") if flag_tokens else "unknown"
+            attachment = Attachment.ATTACHED if info.get("Attached") else Attachment.DETACHED
+            status = _STATUS_MAP.get(flag_tokens[0], Status.UNKNOWN) if flag_tokens else Status.UNKNOWN
         else:
-            attachment = "detached" if "D" in flags else "attached"
+            attachment = Attachment.DETACHED if "D" in flags else Attachment.ATTACHED
             status = _universal_status(flags)
         return PortState(
             id=info["Port"],
@@ -669,12 +671,12 @@ class CliClient(HubClient):
             energy_wh = 0.0
 
         if self._fc == "un":
-            attachment = "detached" if "D" in flags else "attached"
+            attachment = Attachment.DETACHED if "D" in flags else Attachment.ATTACHED
             status = _universal_status(flags)
         else:
             # PDSync / TS3-C10: flag_tokens are positional (Attachment, Status, QC)
-            attachment = _ATTACHMENT_MAP.get(flag_tokens[0], "unknown") if flag_tokens else "unknown"
-            status = _STATUS_MAP.get(flag_tokens[1], "unknown") if len(flag_tokens) > 1 else "unknown"
+            attachment = _ATTACHMENT_MAP.get(flag_tokens[0], Attachment.UNKNOWN) if flag_tokens else Attachment.UNKNOWN
+            status = _STATUS_MAP.get(flag_tokens[1], Status.UNKNOWN) if len(flag_tokens) > 1 else Status.UNKNOWN
 
         return PortState(
             id=port_id,
