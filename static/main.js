@@ -41,7 +41,7 @@ function renderPort(p, hubId, modes) {
       <div class="tile-head">
         <span class="led ${s !== 'idle' ? s : ''}"></span>
         <span class="tile-port">${String(p.id).padStart(2, '0')}</span>
-        <span class="tile-status">${s}</span>
+        <span class="tile-status">${p.attachment} · ${p.status}</span>
       </div>
       <div class="tile-stats">
         <div>

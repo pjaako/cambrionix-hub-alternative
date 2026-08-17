@@ -198,6 +198,9 @@
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--muted);
+      text-align: right;
+      white-space: normal;
+      min-width: 0;
     }
 
     .led {
@@ -304,7 +307,7 @@
             <div class="tile-head">
               <span class="led {{ s if s != 'idle' else '' }}"></span>
               <span class="tile-port">{{ '%02d' | format(p.id) }}</span>
-              <span class="tile-status">{{ s }}</span>
+              <span class="tile-status">{{ p.attachment }} &middot; {{ p.status }}</span>
             </div>
             <div class="tile-stats">
               <div>
