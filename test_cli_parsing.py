@@ -62,22 +62,25 @@ class TestCliParsing(unittest.TestCase):
         # Mock 'id' command to return Universal
         transport.send_command.side_effect = [
             "mfr: Cambrionix, sn: 456, fc: un", # id
+            "5V_V1: 5042\n5V_V2: 5038\n12V: 12050\nTemp: 35400\nFlags: R\n>>", # health
             "1, 0429, R A S, 0, 0, x, 0.00\n>>" # state
         ]
         transport.hub_serial.return_value = "SN456"
-        
+
         client = CliClient(transport)
         ports = client.get_ports()
-        
+
         self.assertEqual(len(ports), 1)
         p = ports[0]
         self.assertEqual(p.id, 1)
-        # Universal doesn't have voltage in state command, or it's current at index 1
+        # Universal doesn't have voltage in state command; it's current at index 1
         self.assertEqual(p.current_ma, 429)
         self.assertEqual(p.attachment, "attached")
         self.assertEqual(p.status, "sync")
         self.assertEqual(p.energy_mwh, 0)
-        self.assertIsNone(p.voltage_mv)
+        # Universal hubs are USB2 with all ports paralleled onto one supply rail,
+        # so voltage comes from the hub-wide `health` command instead.
+        self.assertEqual(p.voltage_mv, 5042)
 
 if __name__ == "__main__":
     unittest.main()

@@ -142,7 +142,7 @@ python test_api.py
   - `hub_client.py` — `discover_hubs()` factory; currently returns `CliClient.discover_serial()`
   - `controller.py` — `HubController`: background polling layer (see below)
   - `app.py` — FastAPI routes; reads from `HubController` cache, never touches serial directly
-  - `models.py` — `PortState` dataclass (shared across all backends) plus the `Attachment`/`Status` `StrEnum`s. Electrical readings are integers in their smallest unit (`voltage_mv`, `current_ma`, `energy_mwh`) rather than floats, to avoid float rounding drift. `voltage_mv` and `charging_seconds` are typed `| None` (voltage is genuinely unmeasured on Universal-firmware hubs, which don't report it in the `state` command); `current_ma` and `energy_mwh` are never `None` — backends coerce missing/unparseable readings to `0`
+  - `models.py` — `PortState` dataclass (shared across all backends) plus the `Attachment`/`Status` `StrEnum`s. Electrical readings are integers in their smallest unit (`voltage_mv`, `current_ma`, `energy_mwh`) rather than floats, to avoid float rounding drift. `voltage_mv` and `charging_seconds` are typed `| None` (a backend that genuinely has no reading, e.g. `set_mode` racing a poll, leaves it `None`); `current_ma` and `energy_mwh` are never `None` — backends coerce missing/unparseable readings to `0`
   - `templates/index.html`, `static/main.js` — frontend
 
 **Do not introduce a `hub.py`** — this name was used by an early prototype `CambrionixHub` class that predates `hub_backends.py`. It had the `\r`-only terminator bug that causes hub unresponsive state (see Known issues). All hub logic now lives in `hub_backends.py`.
@@ -232,6 +232,8 @@ PDSync/TS3-C10 values above). Both serialize as plain strings over JSON — a ca
 The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W`. `energy_Wh` is in column index 6 (0-based); `"x"` means still charging (treated as `None`).
 
 `PortState.energy_mwh` (milliwatt-hours) is populated by all three backends. `RestApiClient` fetches it via a firmware CLI `state` command through the `/command` proxy (workaround for a known REST API bug — see Known issues).
+
+**Universal-firmware voltage**: the `state` command's Universal variant has no voltage column (see CSV order above `## Controller`) — these are USB2 hubs with every port paralleled onto one supply rail, so per-port voltage isn't a meaningful firmware concept. `CliClient._supply_voltage_mv()` instead runs the hub-wide `health` command and applies the one reading to every port. The live-hub output format (`5V Now:   5.13`, in volts) differs from what `docs/cambrionix-cli-reference` documents (`5V_V1: 5042`, in mV) — `_supply_voltage_mv()` parses both, but only the `5V Now` volts format has been confirmed against real hardware (verified 2026-08-17 against a real Universal-firmware hub, PSU-adjustment-verified). `RestApiClient` doesn't need this workaround — the REST API's per-port `sensors` array already reports `volts` correctly on Universal hubs.
 
 ### Discovery
 

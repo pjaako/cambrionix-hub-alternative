@@ -613,6 +613,7 @@ class CliClient(HubClient):
 
     def get_ports(self) -> list[PortState]:
         self.hub_id  # ensure self._fc is populated
+        supply_mv = self._supply_voltage_mv() if self._fc == "un" else None
         raw = self._transport.send_command("state")
         ports = []
         for line in raw.splitlines():
@@ -628,18 +629,19 @@ class CliClient(HubClient):
                 continue
             if port_id == 0:
                 continue
-            ports.append(self._parse_state_line(parts))
+            ports.append(self._parse_state_line(parts, supply_mv))
         return sorted(ports, key=lambda p: p.id)
 
     def get_port(self, port_id: int) -> PortState:
         self.hub_id  # ensure self._fc is populated
+        supply_mv = self._supply_voltage_mv() if self._fc == "un" else None
         raw = self._transport.send_command(f"state {port_id}")
         for line in raw.splitlines():
             parts = [p.strip() for p in line.strip().split(",")]
             if len(parts) >= 3:
                 try:
                     if int(parts[0]) == port_id:
-                        return self._parse_state_line(parts)
+                        return self._parse_state_line(parts, supply_mv)
                 except ValueError:
                     continue
         raise RuntimeError(f"Port {port_id} not found in state output")
@@ -649,7 +651,28 @@ class CliClient(HubClient):
         cmd = f"mode {cli_mode}" if port_id is None else f"mode {cli_mode} {port_id}"
         self._transport.send_command(cmd)
 
-    def _parse_state_line(self, parts: list[str]) -> PortState:
+    def _supply_voltage_mv(self) -> int | None:
+        # Universal firmware doesn't report per-port voltage in `state` (all ports
+        # on these USB2 hubs are paralleled onto one supply rail anyway), but `health`
+        # reports the shared rail. Observed live-hub format is "5V Now:   5.13" (volts);
+        # the CLI reference docs (docs/cambrionix-cli-reference) instead show "5V_V1: 5042"
+        # (mV) — handle both since we've only verified one hub against real hardware.
+        raw = self._transport.send_command("health")
+        for line in raw.splitlines():
+            line = line.strip()
+            if line.lower().startswith("5v now"):
+                try:
+                    return round(float(line.split(":", 1)[1].strip()) * 1000)
+                except (ValueError, IndexError):
+                    return None
+            if line.startswith("5V_V1"):
+                try:
+                    return int(line.split(":", 1)[1].strip())
+                except (ValueError, IndexError):
+                    return None
+        return None
+
+    def _parse_state_line(self, parts: list[str], supply_mv: int | None = None) -> PortState:
         # PDSync: port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x
         # Universal: port, current_mA, flags, profile_id, time_s, time_charged_or_x, energy_Wh_or_x
         def _int(v: str) -> int | None:
@@ -661,7 +684,6 @@ class CliClient(HubClient):
         port_id = _int(parts[0]) or 0
         
         if self._fc == "un":
-            voltage_10mv = None
             current_ma = _int(parts[1]) if len(parts) > 1 else None
             flags_idx = 2
         else:
@@ -692,7 +714,7 @@ class CliClient(HubClient):
             id=port_id,
             attachment=attachment,
             status=status,
-            voltage_mv=voltage_10mv * 10 if voltage_10mv is not None else None,
+            voltage_mv=supply_mv if self._fc == "un" else (voltage_10mv * 10 if voltage_10mv is not None else None),
             current_ma=current_ma or 0,
             charging_seconds=time_sec,
             energy_mwh=energy_mwh,
