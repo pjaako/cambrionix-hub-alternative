@@ -54,16 +54,16 @@ function renderPort(p, hubId, modes) {
       </div>
       <div class="tile-stats">
         <div>
-          <div class="tile-stat-label">V</div>
-          <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? (p.voltage_mv / 1000).toFixed(1) : '—'}</div>
+          <div class="tile-stat-label">mV</div>
+          <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? p.voltage_mv : '—'}</div>
         </div>
         <div>
           <div class="tile-stat-label">mA</div>
           <div class="tile-stat-value">${attached && !isPending && p.current_ma != null ? p.current_ma : '—'}</div>
         </div>
         <div>
-          <div class="tile-stat-label">Wh</div>
-          <div class="tile-stat-value">${attached && !isPending && p.energy_mwh != null ? (p.energy_mwh / 1000).toFixed(2) : '—'}</div>
+          <div class="tile-stat-label">mWh</div>
+          <div class="tile-stat-value">${attached && !isPending && p.energy_mwh != null ? p.energy_mwh : '—'}</div>
         </div>
         <div>
           <div class="tile-stat-label">Time</div>

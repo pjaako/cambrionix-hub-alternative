@@ -85,7 +85,7 @@ uvicorn app:app --reload
 # Open http://localhost:8000
 ```
 
-The app polls `/api/hubs` every 2 seconds and updates the UI live. Each port is a tile showing attachment/status, voltage, current, energy delivered (Wh), and charging time; mode is set via a radio-button toggle on the tile (off/data/power, or off/data+power on hubs without sync). A padlock icon in each hub's header gates hub-wide mode buttons that apply a mode to every port on that hub at once. A "Refresh Hubs" button triggers on-demand rediscovery.
+The app polls `/api/hubs` every 2 seconds and updates the UI live. Each port is a tile showing attachment/status, voltage (mV), current (mA), energy delivered (mWh), and charging time; the tile stats display the raw `PortState` units directly, no V/Wh conversion. Mode is set via a radio-button toggle on the tile (off/data/power, or off/data+power on hubs without sync). A padlock icon in each hub's header gates hub-wide mode buttons that apply a mode to every port on that hub at once. A "Refresh Hubs" button triggers on-demand rediscovery.
 
 ## Running the test script
 
