@@ -186,20 +186,45 @@ The named constructors `CliClient.via_serial()` and `CliClient.via_http()` selec
 
 ### Port state flags
 
-Both `CliClient` and `JsonRpcClient` decode flags from the `state` command / `PortsInfo.Flags`:
+Both `CliClient` and `JsonRpcClient` decode flags from the `state` command / `PortsInfo.Flags`.
+On PDSync/TS3-C10 firmware (`fc` `ps`/`sm`) the flags are **positional**: up to 3
+space-separated tokens — Attachment, Status, Quick-Charge — e.g. `"A C -"`. Column
+position matters: `C` means *Type-C cable, no device* in Attachment but *Charging* in
+Status, so the tokens must be read by position, not pooled into a set.
+
+Column 1 (Attachment) → `PortState.attachment`:
 
 | Flag | Meaning |
 | :--- | :--- |
-| `A` / `D` | **A**ttached / **D**etached (Device presence) |
-| `C` / `I` / `F` | **C**harging / **I**dle / **F**inished charging |
-| `P` | **P**rofiling (Detecting best charge profile) |
-| `S` / `O` / `B` | **S**ync / **O**ff / **B**iased mode |
-| `E` / `R` | **E**rror present / **R**ebooted recently |
-| `T` | **T**heft (Device was removed unexpectedly) |
-| `r` | Vbus is being **r**eset during mode change |
-| `-` / `_` | **QC disallowed** (Quick Charge not active/supported; experimentally proved with PDSync-4) |
-| `+` / `q` / `Q` | **Quick Charge** (Allowed / Enabled / In-use) |
-| absence of O/S/B | On (charging) |
+| `A` | Attached |
+| `D` | Detached |
+| `P` | PD contract established |
+| `C` | Type-C cable detected (but no device) |
+
+Column 2 (Status) → `PortState.status`:
+
+| Flag | Meaning |
+| :--- | :--- |
+| `I` | Idle |
+| `S` | Host port connected |
+| `C` | Charging |
+| `F` | Finished charging |
+| `O` | Off |
+| `c` | Power enabled, no device detected |
+
+Column 3 (Quick Charge, not currently exposed on `PortState`): `-`/`_` disallowed, `+` allowed, `q` enabled, `Q` in use.
+
+Universal firmware (`fc` `un`) instead reports a single combined flag set (order doesn't
+matter, letters are mutually exclusive per firmware docs): `A`/`D` (attachment) plus one
+of `O`/`S`/`B`/`I`/`P`/`C`/`F` (status: off/sync/biased/idle/profiling/charging/finished).
+`E`/`R`/`T`/`r` (error/rebooted/theft/vbus-reset) may also appear but aren't currently
+surfaced on `PortState`.
+
+Full reference: `docs/cambrionix-cli-reference/02-commands-n-z-and-deprecated.md:66-112`.
+
+A port has exactly one attachment value and one status value at a time. A caller of
+`hub_backend` (e.g. `GET /api/hubs`) sees these directly as `attachment`/`status` strings
+per port — e.g. `"status": "finished"`.
 
 The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W`. `energy_Wh` is in column index 6 (0-based); `"x"` means still charging (treated as `None`).
 

@@ -21,9 +21,40 @@ class TestCliParsing(unittest.TestCase):
         self.assertEqual(p.id, 1)
         self.assertEqual(p.voltage_v, 5.15)
         self.assertEqual(p.current_ma, 2051)
-        self.assertEqual(p.mode, "on")
-        self.assertTrue(p.attached)
+        self.assertEqual(p.attachment, "attached")
+        self.assertEqual(p.status, "charging")
         self.assertEqual(p.energy_wh, 9.92)
+
+    def test_pdsync_finished_charging(self):
+        # Port 16 reaching "finished charging" (flag F in the Status column)
+        transport = MagicMock()
+        transport.send_command.side_effect = [
+            "mfr: Cambrionix, sn: 123, fc: ps",
+            "16, 0515, 0000, A F -, 3383, 3383, 9.92\n>>",
+        ]
+        transport.hub_serial.return_value = "SN123"
+
+        client = CliClient(transport)
+        p = client.get_ports()[0]
+
+        self.assertEqual(p.attachment, "attached")
+        self.assertEqual(p.status, "finished")
+
+    def test_pdsync_attachment_status_collision(self):
+        # "C" means Type-C-cable-only in Attachment (col 1) but Charging in Status
+        # (col 2) — positional parsing must resolve them independently.
+        transport = MagicMock()
+        transport.send_command.side_effect = [
+            "mfr: Cambrionix, sn: 123, fc: ps",
+            "1, 0515, 0000, C c -, 0, x, 0.00\n>>",
+        ]
+        transport.hub_serial.return_value = "SN123"
+
+        client = CliClient(transport)
+        p = client.get_ports()[0]
+
+        self.assertEqual(p.attachment, "type_c_only")
+        self.assertEqual(p.status, "power_no_device")
 
     def test_universal_parsing(self):
         # Ex 2: 1, 0429, R A S, 0, 0, x, 0.00
@@ -43,8 +74,8 @@ class TestCliParsing(unittest.TestCase):
         self.assertEqual(p.id, 1)
         # Universal doesn't have voltage in state command, or it's current at index 1
         self.assertEqual(p.current_ma, 429)
-        self.assertEqual(p.mode, "sync")
-        self.assertTrue(p.attached)
+        self.assertEqual(p.attachment, "attached")
+        self.assertEqual(p.status, "sync")
         self.assertEqual(p.energy_wh, 0.0)
         self.assertIsNone(p.voltage_v)
 

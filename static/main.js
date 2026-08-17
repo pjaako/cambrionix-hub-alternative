@@ -1,5 +1,11 @@
 let pendingPorts = new Map(); // "hubId-portId" -> desiredMode
 
+// Derive the write-vocabulary mode (on/off/sync/biased) a status corresponds to,
+// for comparing against the mode-toggle buttons.
+function writeMode(status) {
+    return (status === 'off' || status === 'sync' || status === 'biased') ? status : 'on';
+}
+
 function fmt(seconds) {
     if (seconds == null) return '—';
     const h = Math.floor(seconds / 3600);
@@ -13,12 +19,13 @@ function fmt(seconds) {
 function renderPort(p, hubId, modes) {
     const key = `${hubId}-${p.id}`;
     const isPending = pendingPorts.has(key);
-    const displayedMode = isPending ? pendingPorts.get(key) : p.mode;
+    const attached = p.attachment !== 'detached';
+    const displayedMode = isPending ? pendingPorts.get(key) : writeMode(p.status);
 
-    const s = isPending ? 'transition' : (p.attached && p.mode === 'on' ? 'active'
-            : p.attached                    ? 'standby'
-            :                                 'idle');
-    const powerW = p.attached && p.voltage_v != null && p.current_ma != null
+    const s = isPending ? 'transition' : (attached && p.status !== 'off' ? 'active'
+            : attached                       ? 'standby'
+            :                                  'idle');
+    const powerW = attached && p.voltage_v != null && p.current_ma != null
         ? p.voltage_v * p.current_ma / 1000 : 0;
     const namePrefix = `port-mode-${hubId}-${p.id}`;
 
@@ -39,19 +46,19 @@ function renderPort(p, hubId, modes) {
       <div class="tile-stats">
         <div>
           <div class="tile-stat-label">V</div>
-          <div class="tile-stat-value">${p.attached && !isPending && p.voltage_v != null ? p.voltage_v.toFixed(1) : '—'}</div>
+          <div class="tile-stat-value">${attached && !isPending && p.voltage_v != null ? p.voltage_v.toFixed(1) : '—'}</div>
         </div>
         <div>
           <div class="tile-stat-label">mA</div>
-          <div class="tile-stat-value">${p.attached && !isPending && p.current_ma != null ? p.current_ma : '—'}</div>
+          <div class="tile-stat-value">${attached && !isPending && p.current_ma != null ? p.current_ma : '—'}</div>
         </div>
         <div>
           <div class="tile-stat-label">W</div>
-          <div class="tile-stat-value">${p.attached && !isPending ? powerW.toFixed(1) : '—'}</div>
+          <div class="tile-stat-value">${attached && !isPending ? powerW.toFixed(1) : '—'}</div>
         </div>
         <div>
           <div class="tile-stat-label">Time</div>
-          <div class="tile-stat-value">${p.attached && !isPending ? fmt(p.charging_seconds) : '—'}</div>
+          <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : '—'}</div>
         </div>
       </div>
       <div class="mode-toggle">${toggle}</div>
@@ -90,7 +97,7 @@ async function refresh() {
                 // Clear pending ports that have reached their target state
                 for (const p of hub.ports) {
                     const key = `${hub.hub_id}-${p.id}`;
-                    if (pendingPorts.has(key) && pendingPorts.get(key) === p.mode) {
+                    if (pendingPorts.has(key) && pendingPorts.get(key) === writeMode(p.status)) {
                         pendingPorts.delete(key);
                     }
                 }

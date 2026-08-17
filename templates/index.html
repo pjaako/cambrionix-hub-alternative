@@ -296,8 +296,10 @@
       <div class="hub-ports">
         <div class="hub-ports-body">
           {% for p in hub.ports %}
-          {%- set s = 'active' if (p.attached and p.mode == 'on') else ('standby' if p.attached else 'idle') -%}
-          {%- set power_w = (p.voltage_v * p.current_ma / 1000) if (p.voltage_v is not none and p.current_ma is not none and p.attached) else 0 -%}
+          {%- set attached = p.attachment != 'detached' -%}
+          {%- set write_mode = p.status if p.status in ('off', 'sync', 'biased') else 'on' -%}
+          {%- set s = 'active' if (attached and p.status != 'off') else ('standby' if attached else 'idle') -%}
+          {%- set power_w = (p.voltage_v * p.current_ma / 1000) if (p.voltage_v is not none and p.current_ma is not none and attached) else 0 -%}
           <div class="port-tile s-{{ s }}">
             <div class="tile-head">
               <span class="led {{ s if s != 'idle' else '' }}"></span>
@@ -307,20 +309,20 @@
             <div class="tile-stats">
               <div>
                 <div class="tile-stat-label">V</div>
-                <div class="tile-stat-value">{{ "%.1f" | format(p.voltage_v) if (p.voltage_v is not none and p.attached) else "—" }}</div>
+                <div class="tile-stat-value">{{ "%.1f" | format(p.voltage_v) if (p.voltage_v is not none and attached) else "—" }}</div>
               </div>
               <div>
                 <div class="tile-stat-label">mA</div>
-                <div class="tile-stat-value">{{ p.current_ma if (p.current_ma is not none and p.attached) else "—" }}</div>
+                <div class="tile-stat-value">{{ p.current_ma if (p.current_ma is not none and attached) else "—" }}</div>
               </div>
               <div>
                 <div class="tile-stat-label">W</div>
-                <div class="tile-stat-value">{{ "%.1f" | format(power_w) if p.attached else "—" }}</div>
+                <div class="tile-stat-value">{{ "%.1f" | format(power_w) if attached else "—" }}</div>
               </div>
               <div>
                 <div class="tile-stat-label">Time</div>
                 <div class="tile-stat-value">
-                  {%- if not p.attached or p.charging_seconds is none -%}—
+                  {%- if not attached or p.charging_seconds is none -%}—
                   {%- elif p.charging_seconds >= 3600 -%}{{ p.charging_seconds // 3600 }}h {{ (p.charging_seconds % 3600) // 60 }}m
                   {%- elif p.charging_seconds >= 60 -%}{{ p.charging_seconds // 60 }}m {{ p.charging_seconds % 60 }}s
                   {%- else -%}{{ p.charging_seconds }}s
@@ -331,7 +333,7 @@
             <div class="mode-toggle">
               {% for m in hub.modes %}
               <input type="radio" name="port-mode-{{ hub.hub_id }}-{{ p.id }}" id="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}"
-                     value="{{ m }}" {{ 'checked' if m == p.mode else '' }}
+                     value="{{ m }}" {{ 'checked' if m == write_mode else '' }}
                      onchange="setMode('{{ hub.hub_id }}', {{ p.id }}, '{{ m }}')">
               <label for="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}" class="opt-{{ m }}">{{ m }}</label>
               {% endfor %}
