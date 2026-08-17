@@ -19,11 +19,11 @@ class TestCliParsing(unittest.TestCase):
         self.assertEqual(len(ports), 1)
         p = ports[0]
         self.assertEqual(p.id, 1)
-        self.assertEqual(p.voltage_v, 5.15)
+        self.assertEqual(p.voltage_mv, 5150)
         self.assertEqual(p.current_ma, 2051)
         self.assertEqual(p.attachment, "attached")
         self.assertEqual(p.status, "charging")
-        self.assertEqual(p.energy_wh, 9.92)
+        self.assertEqual(p.energy_mwh, 9920)
 
     def test_pdsync_finished_charging(self):
         # Port 16 reaching "finished charging" (flag F in the Status column)
@@ -76,8 +76,8 @@ class TestCliParsing(unittest.TestCase):
         self.assertEqual(p.current_ma, 429)
         self.assertEqual(p.attachment, "attached")
         self.assertEqual(p.status, "sync")
-        self.assertEqual(p.energy_wh, 0.0)
-        self.assertIsNone(p.voltage_v)
+        self.assertEqual(p.energy_mwh, 0)
+        self.assertIsNone(p.voltage_mv)
 
 if __name__ == "__main__":
     unittest.main()

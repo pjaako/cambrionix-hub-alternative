@@ -323,7 +323,7 @@ def port_info(port_id):
     for label, b in backends:
         p = b.get_port(port_id)
         print(f"  {label}: attachment={p.attachment} status={p.status} "
-              f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+              f"mV={p.voltage_mv} mA={p.current_ma} s={p.charging_seconds} mWh={p.energy_mwh}")
 
     print("\n--- supported modes ---")
     for label, b in backends:
@@ -395,12 +395,12 @@ def _print_hub(label: str, hub) -> None:
         print(f"  get_ports:")
         for p in ports:
             print(f"    port {p.id}: attachment={p.attachment} status={p.status} "
-                  f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+                  f"mV={p.voltage_mv} mA={p.current_ma} s={p.charging_seconds} mWh={p.energy_mwh}")
         attached = next((p.id for p in ports if p.attachment != "detached"), None)
         if attached is not None:
             p = hub.get_port(attached)
             print(f"  get_port({attached}): attachment={p.attachment} status={p.status} "
-                  f"V={p.voltage_v} mA={p.current_ma} s={p.charging_seconds} Wh={p.energy_wh}")
+                  f"mV={p.voltage_mv} mA={p.current_ma} s={p.charging_seconds} mWh={p.energy_mwh}")
     except Exception as e:
         print(f"  FAILED: {e}")
     print()

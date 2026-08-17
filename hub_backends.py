@@ -121,7 +121,7 @@ class RestApiClient(HubClient):
             self._modes = [m["mode"] for m in data["result"]]
         return self._modes
 
-    def _fetch_energies(self) -> dict[int, float]:
+    def _fetch_energies(self) -> dict[int, int]:
         # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): energy field missing
         # from port response. Fetch via firmware CLI state command as workaround.
         hub = self.hub_id
@@ -133,7 +133,7 @@ class RestApiClient(HubClient):
         )
         logger.debug("REST POST %s (state) -> %s", url, resp.text)
         resp.raise_for_status()
-        energies: dict[int, float] = {}
+        energies: dict[int, int] = {}
         for line in resp.text.splitlines():
             parts = [p.strip() for p in line.split(",")]
             if len(parts) < 7:
@@ -143,9 +143,9 @@ class RestApiClient(HubClient):
             except ValueError:
                 continue
             try:
-                energies[port_id] = float(parts[6]) if parts[6] not in ("", "x") else 0.0
+                energies[port_id] = round(float(parts[6]) * 1000) if parts[6] not in ("", "x") else 0
             except ValueError:
-                energies[port_id] = 0.0
+                energies[port_id] = 0
         return energies
 
     def get_ports(self) -> list[PortState]:
@@ -155,7 +155,7 @@ class RestApiClient(HubClient):
         logger.debug("REST GET %s -> %s", url, resp.text)
         data = resp.raise_for_status().json()
         energies = self._fetch_energies()
-        ports = [self._parse(p, energies.get(p["id"], 0.0)) for p in data["result"] if p["id"] != 0]
+        ports = [self._parse(p, energies.get(p["id"], 0)) for p in data["result"] if p["id"] != 0]
         return sorted(ports, key=lambda p: p.id)
 
     def get_port(self, port_id: int) -> PortState:
@@ -165,7 +165,7 @@ class RestApiClient(HubClient):
         logger.debug("REST GET %s -> %s", url, resp.text)
         data = resp.raise_for_status().json()
         energies = self._fetch_energies()
-        return self._parse(data["result"], energies.get(port_id, 0.0))
+        return self._parse(data["result"], energies.get(port_id, 0))
 
     def set_mode(self, port_id: int | None, mode: str) -> None:
         hub = self.hub_id
@@ -195,7 +195,7 @@ class RestApiClient(HubClient):
         logger.debug("REST POST %s (mode=%s) -> %s", url, mode, resp.text)
         resp.raise_for_status()
 
-    def _parse(self, raw: dict, energy_wh: float = 0.0) -> PortState:
+    def _parse(self, raw: dict, energy_mwh: int = 0) -> PortState:
         state = raw.get("state", {})
         sensors = {s["type"]: s["value"] for s in raw.get("sensors", [])}
         power = raw.get("power", {})
@@ -211,10 +211,10 @@ class RestApiClient(HubClient):
             id=raw["id"],
             attachment=attachment,
             status=status,
-            voltage_v=sensors.get("volts", 0.0),
+            voltage_mv=round(sensors.get("volts", 0.0) * 1000),
             current_ma=sensors.get("milliamps", 0),
             charging_seconds=charging.get("seconds", 0),
-            energy_wh=energy_wh,
+            energy_mwh=energy_mwh,
         )
 
 
@@ -362,9 +362,9 @@ class JsonRpcClient(HubClient):
         for i, pid in enumerate(port_ids):
             v10mv, t, e = results[i * 3], results[i * 3 + 1], results[i * 3 + 2]
             extras[pid] = {
-                "voltage_v": round(v10mv / 100.0, 2) if v10mv is not None else 0.0,
+                "voltage_mv": v10mv * 10 if v10mv is not None else 0,
                 "charging_seconds": t or 0,
-                "energy_wh": round(e, 2) if e is not None else 0.0,
+                "energy_mwh": round(e * 1000) if e is not None else 0,
             }
         ports = [
             self._parse_ports_info(info, extras.get(info["Port"], {}))
@@ -385,9 +385,9 @@ class JsonRpcClient(HubClient):
             for prop in props
         ])
         return self._parse_ports_info(info, {
-            "voltage_v": round(v10mv / 100.0, 2) if v10mv is not None else 0.0,
+            "voltage_mv": v10mv * 10 if v10mv is not None else 0,
             "charging_seconds": time_sec or 0,
-            "energy_wh": round(energy_wh, 2) if energy_wh is not None else 0.0,
+            "energy_mwh": round(energy_wh * 1000) if energy_wh is not None else 0,
         })
 
     def set_mode(self, port_id: int | None, mode: str) -> None:
@@ -411,10 +411,10 @@ class JsonRpcClient(HubClient):
             id=info["Port"],
             attachment=attachment,
             status=status,
-            voltage_v=extras.get("voltage_v", 0.0),
+            voltage_mv=extras.get("voltage_mv", 0),
             current_ma=info.get("Current_mA", 0),
             charging_seconds=extras.get("charging_seconds", 0),
-            energy_wh=extras.get("energy_wh", 0.0),
+            energy_mwh=extras.get("energy_mwh", 0),
         )
 
 
@@ -676,9 +676,9 @@ class CliClient(HubClient):
         time_sec = _int(parts[4]) if len(parts) > 4 else None
         energy_str = parts[6].strip() if len(parts) > 6 else None
         try:
-            energy_wh = float(energy_str) if energy_str and energy_str != "x" else 0.0
+            energy_mwh = round(float(energy_str) * 1000) if energy_str and energy_str != "x" else 0
         except ValueError:
-            energy_wh = 0.0
+            energy_mwh = 0
 
         if self._fc == "un":
             attachment = Attachment.DETACHED if "D" in flags else Attachment.ATTACHED
@@ -692,8 +692,8 @@ class CliClient(HubClient):
             id=port_id,
             attachment=attachment,
             status=status,
-            voltage_v=voltage_10mv / 100.0 if voltage_10mv is not None else None,
+            voltage_mv=voltage_10mv * 10 if voltage_10mv is not None else None,
             current_ma=current_ma,
             charging_seconds=time_sec,
-            energy_wh=energy_wh,
+            energy_mwh=energy_mwh,
         )

@@ -351,7 +351,7 @@
             <div class="tile-stats">
               <div>
                 <div class="tile-stat-label">V</div>
-                <div class="tile-stat-value">{{ "%.1f" | format(p.voltage_v) if (p.voltage_v is not none and attached) else "—" }}</div>
+                <div class="tile-stat-value">{{ "%.1f" | format(p.voltage_mv / 1000) if (p.voltage_mv is not none and attached) else "—" }}</div>
               </div>
               <div>
                 <div class="tile-stat-label">mA</div>
@@ -359,7 +359,7 @@
               </div>
               <div>
                 <div class="tile-stat-label">Wh</div>
-                <div class="tile-stat-value">{{ "%.2f" | format(p.energy_wh) if (p.energy_wh is not none and attached) else "—" }}</div>
+                <div class="tile-stat-value">{{ "%.2f" | format(p.energy_mwh / 1000) if (p.energy_mwh is not none and attached) else "—" }}</div>
               </div>
               <div>
                 <div class="tile-stat-label">Time</div>

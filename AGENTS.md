@@ -142,7 +142,7 @@ python test_api.py
   - `hub_client.py` — `discover_hubs()` factory; currently returns `CliClient.discover_serial()`
   - `controller.py` — `HubController`: background polling layer (see below)
   - `app.py` — FastAPI routes; reads from `HubController` cache, never touches serial directly
-  - `models.py` — `PortState` dataclass (shared across all backends) plus the `Attachment`/`Status` `StrEnum`s; `voltage_v`, `current_ma`, and `charging_seconds` are typed `| None` and may be `None` when unavailable
+  - `models.py` — `PortState` dataclass (shared across all backends) plus the `Attachment`/`Status` `StrEnum`s; `voltage_mv`, `current_ma`, and `charging_seconds` are typed `| None` and may be `None` when unavailable. Electrical readings are integers in their smallest unit (`voltage_mv`, `current_ma`, `energy_mwh`) rather than floats, to avoid float rounding drift
   - `templates/index.html`, `static/main.js` — frontend
 
 **Do not introduce a `hub.py`** — this name was used by an early prototype `CambrionixHub` class that predates `hub_backends.py`. It had the `\r`-only terminator bug that causes hub unresponsive state (see Known issues). All hub logic now lives in `hub_backends.py`.
@@ -231,7 +231,7 @@ PDSync/TS3-C10 values above). Both serialize as plain strings over JSON — a ca
 
 The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x, power_W`. `energy_Wh` is in column index 6 (0-based); `"x"` means still charging (treated as `None`).
 
-`PortState.energy_wh` is populated by all three backends. `RestApiClient` fetches it via a firmware CLI `state` command through the `/command` proxy (workaround for a known REST API bug — see Known issues).
+`PortState.energy_mwh` (milliwatt-hours) is populated by all three backends. `RestApiClient` fetches it via a firmware CLI `state` command through the `/command` proxy (workaround for a known REST API bug — see Known issues).
 
 ### Discovery
 

@@ -28,7 +28,7 @@ class PortState:
     id: int
     attachment: Attachment
     status: Status
-    voltage_v: float | None
+    voltage_mv: int | None
     current_ma: int | None
     charging_seconds: int | None
-    energy_wh: float = 0.0
+    energy_mwh: int = 0
