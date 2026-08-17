@@ -128,6 +128,34 @@
       color: var(--text);
     }
 
+    .hub-mode-toggle {
+      display: flex;
+      margin-left: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .hub-mode-toggle button {
+      border: none;
+      border-left: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: color 0.1s, background 0.1s;
+    }
+    .hub-mode-toggle button:first-child { border-left: none; }
+    .hub-mode-toggle button:hover {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
     /* ── PORT GRID ── */
     .hub-ports { padding: 16px 20px; }
 
@@ -271,6 +299,11 @@
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">{{ hub.hub_id }}</span>
+        <div class="hub-mode-toggle">
+          {% for m in mode_order if m in hub.modes %}
+          <button type="button" onclick="event.stopPropagation(); setHubMode('{{ hub.hub_id }}', [{{ hub.ports | map(attribute='id') | join(',') }}], '{{ m }}')">{{ mode_labels[m] }}</button>
+          {% endfor %}
+        </div>
       </summary>
       <div class="hub-ports">
         <div class="hub-ports-body">

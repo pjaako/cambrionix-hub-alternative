@@ -77,10 +77,16 @@ function renderPort(p, hubId, modes) {
 }
 
 function renderHub(hub) {
+    const portIds = hub.ports.map(p => p.id);
+    const hubToggle = displayModes(hub.modes).map(({ value: m, label }) => `
+        <button type="button" onclick="event.stopPropagation(); setHubMode('${hub.hub_id}', [${portIds.join(',')}], '${m}')">${label}</button>`
+    ).join('');
+
     return `<details open class="hub-section" data-hub-id="${hub.hub_id}">
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">${hub.hub_id}</span>
+        <div class="hub-mode-toggle">${hubToggle}</div>
       </summary>
       <div class="hub-ports">
         <div class="hub-ports-body">
@@ -163,6 +169,12 @@ async function setMode(hubId, portId, mode) {
         document.getElementById('error').textContent = e.message;
         pendingPorts.delete(key);
         refresh();
+    }
+}
+
+function setHubMode(hubId, portIds, mode) {
+    for (const portId of portIds) {
+        setMode(hubId, portId, mode);
     }
 }
 
