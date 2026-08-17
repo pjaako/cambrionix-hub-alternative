@@ -51,7 +51,6 @@ function renderPort(p, hubId, modes) {
 
     return `<div class="port-tile s-${s} ${isPending ? 'pending' : ''}">
       <div class="tile-head">
-        <span class="led ${s !== 'idle' ? s : ''}"></span>
         <span class="tile-port">${String(p.id).padStart(2, '0')}</span>
         <span class="tile-status">${p.attachment} · ${p.status}</span>
       </div>
@@ -82,7 +81,6 @@ function renderHub(hub) {
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">${hub.hub_id}</span>
-        <span class="hub-meta">${hub.ports.length} ports · ${displayModes(hub.modes).map(dm => dm.label).join(' / ')}</span>
       </summary>
       <div class="hub-ports">
         <div class="hub-ports-body">

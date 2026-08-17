@@ -20,7 +20,6 @@
 
       --c-active:   #FACC15;
       --c-idle:     #63666D;
-      --c-transition: #9CA3AF;
       --c-neutral:  #52525B;
 
       --c-off:      #F87171;
@@ -129,12 +128,6 @@
       color: var(--text);
     }
 
-    .hub-meta {
-      font-size: 12px;
-      color: var(--muted);
-      margin-left: auto;
-    }
-
     /* ── PORT GRID ── */
     .hub-ports { padding: 16px 20px; }
 
@@ -200,23 +193,6 @@
       text-align: right;
       white-space: normal;
       min-width: 0;
-    }
-
-    .led {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--c-idle);
-      flex-shrink: 0;
-    }
-    .led.active  { background: var(--c-active); }
-    .led.off     { background: var(--c-neutral); }
-    .led.transition { background: var(--c-transition); animation: pulse 1.5s infinite; }
-
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.4; }
-      100% { opacity: 1; }
     }
 
     /* ── TILE STATS ── */
@@ -295,8 +271,6 @@
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">{{ hub.hub_id }}</span>
-        <span class="hub-meta">{{ hub.ports | length }} ports ·
-          {%- for m in mode_order if m in hub.modes %} {{ mode_labels[m] }}{{ ' /' if not loop.last else '' }}{% endfor %}</span>
       </summary>
       <div class="hub-ports">
         <div class="hub-ports-body">
@@ -307,7 +281,6 @@
           {%- set power_w = (p.voltage_v * p.current_ma / 1000) if (p.voltage_v is not none and p.current_ma is not none and attached) else 0 -%}
           <div class="port-tile s-{{ s }}">
             <div class="tile-head">
-              <span class="led {{ s if s != 'idle' else '' }}"></span>
               <span class="tile-port">{{ '%02d' | format(p.id) }}</span>
               <span class="tile-status">{{ p.attachment }} &middot; {{ p.status }}</span>
             </div>
