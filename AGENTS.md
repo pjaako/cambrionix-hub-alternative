@@ -290,3 +290,5 @@ The FastAPI app (`app.py`) exposes:
 ## Commit conventions
 
 Every commit must include a `Co-Authored-By` line crediting the agent that made the change (using that agent's own name and contact).
+
+Before every commit, check the staged diff (including commit message body) for the owner's sensitive data — not just hub serial numbers, but anything else identifying, private, or otherwise not meant for a public repo (hardware IDs, hostnames/IPs, credentials, personal file paths, etc.). This repo is public on GitHub; nothing sensitive should reach it, including in commit messages, not just file contents. If something slips into a commit that hasn't been pushed yet, fix it before it goes out rather than pushing and cleaning up after — see `git log origin/main..HEAD -p | grep <term>` to check what's actually still local. If it's already public, ask before rewriting shared history.
