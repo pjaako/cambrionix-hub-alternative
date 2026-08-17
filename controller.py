@@ -129,20 +129,29 @@ class HubController:
         with self._cache_lock:
             self._cache = state
 
+    def _apply_set_mode(self, hub_id: str, port_id: int | None, mode: str) -> None:
+        h = self._hubs.get(hub_id)
+        if not h:
+            logger.warning(f"Command ignored: Hub {hub_id} not found")
+            return
+        try:
+            if port_id is None:
+                logger.info(f"Command: Setting hub {hub_id} ALL ports to {mode}")
+            else:
+                logger.info(f"Command: Setting hub {hub_id} port {port_id} to {mode}")
+            h.set_mode(port_id, mode)
+        except Exception as e:
+            logger.error(f"Failed to set mode for hub {hub_id}: {e}")
+            self._last_discovery = 0  # Force rediscovery on error
+
     def _process_command(self, cmd: tuple) -> None:
         op, *args = cmd
         if op == "set_mode":
             hub_id, port_id, mode = args
-            h = self._hubs.get(hub_id)
-            if h:
-                try:
-                    logger.info(f"Command: Setting hub {hub_id} port {port_id} to {mode}")
-                    h.set_mode(port_id, mode)
-                except Exception as e:
-                    logger.error(f"Failed to set mode for hub {hub_id}: {e}")
-                    self._last_discovery = 0  # Force rediscovery on error
-            else:
-                logger.warning(f"Command ignored: Hub {hub_id} not found")
+            self._apply_set_mode(hub_id, port_id, mode)
+        elif op == "set_mode_all":
+            hub_id, mode = args
+            self._apply_set_mode(hub_id, None, mode)
         elif op == "discover":
             logger.info("Command: Manual hub discovery")
             self._discover()
@@ -155,6 +164,10 @@ class HubController:
     def set_mode(self, hub_id: str, port_id: int, mode: str) -> None:
         """Pushes command to queue and returns immediately."""
         self._command_queue.put(("set_mode", hub_id, port_id, mode))
+
+    def set_mode_all(self, hub_id: str, mode: str) -> None:
+        """Pushes a hub-wide (every port) set-mode command to queue and returns immediately."""
+        self._command_queue.put(("set_mode_all", hub_id, mode))
 
     def discover(self) -> None:
         """Pushes discovery command to queue."""

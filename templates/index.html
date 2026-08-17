@@ -301,7 +301,7 @@
         <span class="hub-label">{{ hub.hub_id }}</span>
         <div class="hub-mode-toggle">
           {% for m in mode_order if m in hub.modes %}
-          <button type="button" onclick="event.stopPropagation(); setHubMode('{{ hub.hub_id }}', [{{ hub.ports | map(attribute='id') | join(',') }}], '{{ m }}')">{{ mode_labels[m] }}</button>
+          <button type="button" onclick="event.stopPropagation(); setHubMode('{{ hub.hub_id }}', '{{ m }}')">{{ mode_labels[m] }}</button>
           {% endfor %}
         </div>
       </summary>

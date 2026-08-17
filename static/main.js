@@ -77,9 +77,8 @@ function renderPort(p, hubId, modes) {
 }
 
 function renderHub(hub) {
-    const portIds = hub.ports.map(p => p.id);
     const hubToggle = displayModes(hub.modes).map(({ value: m, label }) => `
-        <button type="button" onclick="event.stopPropagation(); setHubMode('${hub.hub_id}', [${portIds.join(',')}], '${m}')">${label}</button>`
+        <button type="button" onclick="event.stopPropagation(); setHubMode('${hub.hub_id}', '${m}')">${label}</button>`
     ).join('');
 
     return `<details open class="hub-section" data-hub-id="${hub.hub_id}">
@@ -172,9 +171,17 @@ async function setMode(hubId, portId, mode) {
     }
 }
 
-function setHubMode(hubId, portIds, mode) {
-    for (const portId of portIds) {
-        setMode(hubId, portId, mode);
+async function setHubMode(hubId, mode) {
+    try {
+        const res = await fetch(`/api/hubs/${hubId}/ports/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        refresh();
+    } catch (e) {
+        document.getElementById('error').textContent = e.message;
     }
 }
 

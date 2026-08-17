@@ -60,6 +60,19 @@ def api_set_mode(hub_id: str, port_id: int, body: ModeRequest):
     return {"status": "accepted", "hub_id": hub_id, "port_id": port_id, "mode": body.mode}
 
 
+@app.post("/api/hubs/{hub_id}/ports/mode", status_code=202)
+def api_set_hub_mode(hub_id: str, body: ModeRequest):
+    hubs_snapshot = hub.get_hubs()
+    hub_entry = next((h for h in hubs_snapshot if h["hub_id"] == hub_id), None)
+    if hub_entry is None:
+        raise HTTPException(status_code=404, detail=f"Hub {hub_id!r} not found")
+    valid = hub_entry["modes"]
+    if body.mode not in valid:
+        raise HTTPException(status_code=422, detail=f"mode must be one of {valid}")
+    hub.set_mode_all(hub_id, body.mode)
+    return {"status": "accepted", "hub_id": hub_id, "mode": body.mode}
+
+
 if __name__ == "__main__":
     import uvicorn
     

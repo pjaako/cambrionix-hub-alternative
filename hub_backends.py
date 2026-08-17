@@ -76,7 +76,9 @@ class HubClient(ABC):
     def get_port(self, port_id: int) -> PortState: ...
 
     @abstractmethod
-    def set_mode(self, port_id: int, mode: str) -> None: ...
+    def set_mode(self, port_id: int | None, mode: str) -> None:
+        """port_id=None applies the mode to every port on the hub."""
+        ...
 
 
 # ---------------------------------------------------------------------------
@@ -165,8 +167,14 @@ class RestApiClient(HubClient):
         energies = self._fetch_energies()
         return self._parse(data["result"], energies.get(port_id, 0.0))
 
-    def set_mode(self, port_id: int, mode: str) -> None:
+    def set_mode(self, port_id: int | None, mode: str) -> None:
         hub = self.hub_id
+        if port_id is None:
+            url = f"{self._base}/hubs/{hub}/ports/mode"
+            resp = self._client.post(url, json={"mode": mode})
+            logger.debug("REST POST %s (mode=%s, all ports) -> %s", url, mode, resp.text)
+            resp.raise_for_status()
+            return
         # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): POST mode "on"
         # returns success but port stays off. Always use firmware CLI for "on".
         if mode == "on":
@@ -382,9 +390,10 @@ class JsonRpcClient(HubClient):
             "energy_wh": round(energy_wh, 2) if energy_wh is not None else 0.0,
         })
 
-    def set_mode(self, port_id: int, mode: str) -> None:
+    def set_mode(self, port_id: int | None, mode: str) -> None:
         self._connect()
-        self._rpc("cbrx_connection_set", [self._handle, f"Port.{port_id}.Mode", _MODE_TO_CLI.get(mode, mode)])
+        key = "mode" if port_id is None else f"Port.{port_id}.Mode"
+        self._rpc("cbrx_connection_set", [self._handle, key, _MODE_TO_CLI.get(mode, mode)])
 
     def _parse_ports_info(self, info: dict, extras: dict = {}) -> PortState:
         flag_tokens = info.get("Flags", "").split()
@@ -635,9 +644,10 @@ class CliClient(HubClient):
                     continue
         raise RuntimeError(f"Port {port_id} not found in state output")
 
-    def set_mode(self, port_id: int, mode: str) -> None:
+    def set_mode(self, port_id: int | None, mode: str) -> None:
         cli_mode = _MODE_TO_CLI.get(mode, mode)
-        self._transport.send_command(f"mode {cli_mode} {port_id}")
+        cmd = f"mode {cli_mode}" if port_id is None else f"mode {cli_mode} {port_id}"
+        self._transport.send_command(cmd)
 
     def _parse_state_line(self, parts: list[str]) -> PortState:
         # PDSync: port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x
