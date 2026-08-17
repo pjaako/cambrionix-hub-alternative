@@ -19,7 +19,6 @@
       --sans:       'Inter', system-ui, -apple-system, sans-serif;
 
       --c-active:   #FACC15;
-      --c-standby:  #F59E0B;
       --c-idle:     #63666D;
       --c-transition: #9CA3AF;
       --c-neutral:  #52525B;
@@ -176,6 +175,7 @@
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     }
     .port-tile.pending { opacity: 0.6; }
+    .port-tile.s-off { background: var(--c-neutral); opacity: 0.6; }
 
     /* ── TILE HEADER ── */
     .tile-head {
@@ -210,7 +210,7 @@
       flex-shrink: 0;
     }
     .led.active  { background: var(--c-active); }
-    .led.standby { background: var(--c-standby); }
+    .led.off     { background: var(--c-neutral); }
     .led.transition { background: var(--c-transition); animation: pulse 1.5s infinite; }
 
     @keyframes pulse {
@@ -303,7 +303,7 @@
           {% for p in hub.ports %}
           {%- set attached = p.attachment != 'detached' -%}
           {%- set write_mode = p.status if p.status in ('off', 'sync', 'biased') else 'on' -%}
-          {%- set s = 'active' if (attached and p.status != 'off') else ('standby' if attached else 'idle') -%}
+          {%- set s = 'off' if p.status == 'off' else ('active' if attached else 'idle') -%}
           {%- set power_w = (p.voltage_v * p.current_ma / 1000) if (p.voltage_v is not none and p.current_ma is not none and attached) else 0 -%}
           <div class="port-tile s-{{ s }}">
             <div class="tile-head">

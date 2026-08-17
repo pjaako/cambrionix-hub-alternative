@@ -33,9 +33,10 @@ function renderPort(p, hubId, modes) {
     const attached = p.attachment !== 'detached';
     const displayedMode = isPending ? pendingPorts.get(key) : writeMode(p.status);
 
-    const s = isPending ? 'transition' : (attached && p.status !== 'off' ? 'active'
-            : attached                       ? 'standby'
-            :                                  'idle');
+    const s = isPending ? 'transition'
+            : p.status === 'off' ? 'off'
+            : attached           ? 'active'
+            :                      'idle';
     const powerW = attached && p.voltage_v != null && p.current_ma != null
         ? p.voltage_v * p.current_ma / 1000 : 0;
     const namePrefix = `port-mode-${hubId}-${p.id}`;
