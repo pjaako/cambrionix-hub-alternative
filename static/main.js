@@ -37,8 +37,6 @@ function renderPort(p, hubId, modes) {
             : p.status === 'off' ? 'off'
             : attached           ? 'active'
             :                      'idle';
-    const powerW = attached && p.voltage_v != null && p.current_ma != null
-        ? p.voltage_v * p.current_ma / 1000 : 0;
     const namePrefix = `port-mode-${hubId}-${p.id}`;
 
     const toggle = displayModes(modes).map(({ value: m, label }) => `
@@ -64,8 +62,8 @@ function renderPort(p, hubId, modes) {
           <div class="tile-stat-value">${attached && !isPending && p.current_ma != null ? p.current_ma : '—'}</div>
         </div>
         <div>
-          <div class="tile-stat-label">W</div>
-          <div class="tile-stat-value">${attached && !isPending ? powerW.toFixed(1) : '—'}</div>
+          <div class="tile-stat-label">Wh</div>
+          <div class="tile-stat-value">${attached && !isPending && p.energy_wh != null ? p.energy_wh.toFixed(2) : '—'}</div>
         </div>
         <div>
           <div class="tile-stat-label">Time</div>

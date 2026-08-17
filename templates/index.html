@@ -343,7 +343,6 @@
           {%- set attached = p.attachment != 'detached' -%}
           {%- set write_mode = p.status if p.status in ('off', 'sync', 'biased') else 'on' -%}
           {%- set s = 'off' if p.status == 'off' else ('active' if attached else 'idle') -%}
-          {%- set power_w = (p.voltage_v * p.current_ma / 1000) if (p.voltage_v is not none and p.current_ma is not none and attached) else 0 -%}
           <div class="port-tile s-{{ s }}">
             <div class="tile-head">
               <span class="tile-port">{{ '%02d' | format(p.id) }}</span>
@@ -359,8 +358,8 @@
                 <div class="tile-stat-value">{{ p.current_ma if (p.current_ma is not none and attached) else "—" }}</div>
               </div>
               <div>
-                <div class="tile-stat-label">W</div>
-                <div class="tile-stat-value">{{ "%.1f" | format(power_w) if attached else "—" }}</div>
+                <div class="tile-stat-label">Wh</div>
+                <div class="tile-stat-value">{{ "%.2f" | format(p.energy_wh) if (p.energy_wh is not none and attached) else "—" }}</div>
               </div>
               <div>
                 <div class="tile-stat-label">Time</div>
