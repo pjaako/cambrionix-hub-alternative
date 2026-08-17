@@ -255,15 +255,7 @@
       grid-template-columns: repeat(2, 1fr);
       gap: 8px 12px;
     }
-    .tile-stat-label {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
     .tile-stat-value {
-      margin-top: 2px;
       font-family: var(--mono);
       font-size: 14px;
       color: var(--text);
@@ -349,27 +341,15 @@
               <span class="tile-status">{{ p.attachment }} &middot; {{ p.status }}</span>
             </div>
             <div class="tile-stats">
-              <div>
-                <div class="tile-stat-label">Voltage</div>
-                <div class="tile-stat-value">{{ (p.voltage_mv ~ " mV") if (p.voltage_mv is not none and attached) else "—" }}</div>
-              </div>
-              <div>
-                <div class="tile-stat-label">Current</div>
-                <div class="tile-stat-value">{{ (p.current_ma ~ " mA") if attached else "—" }}</div>
-              </div>
-              <div>
-                <div class="tile-stat-label">Energy</div>
-                <div class="tile-stat-value">{{ (p.energy_mwh ~ " mWh") if attached else "—" }}</div>
-              </div>
-              <div>
-                <div class="tile-stat-label">Time</div>
-                <div class="tile-stat-value">
-                  {%- if not attached or p.charging_seconds is none -%}—
-                  {%- elif p.charging_seconds >= 3600 -%}{{ p.charging_seconds // 3600 }}h {{ (p.charging_seconds % 3600) // 60 }}m
-                  {%- elif p.charging_seconds >= 60 -%}{{ p.charging_seconds // 60 }}m {{ p.charging_seconds % 60 }}s
-                  {%- else -%}{{ p.charging_seconds }}s
-                  {%- endif -%}
-                </div>
+              <div class="tile-stat-value">{{ (p.voltage_mv ~ " mV") if (p.voltage_mv is not none and attached) else "—" }}</div>
+              <div class="tile-stat-value">{{ (p.current_ma ~ " mA") if attached else "—" }}</div>
+              <div class="tile-stat-value">{{ (p.energy_mwh ~ " mWh") if attached else "—" }}</div>
+              <div class="tile-stat-value">
+                {%- if not attached or p.charging_seconds is none -%}—
+                {%- elif p.charging_seconds >= 3600 -%}{{ p.charging_seconds // 3600 }}h {{ (p.charging_seconds % 3600) // 60 }}m
+                {%- elif p.charging_seconds >= 60 -%}{{ p.charging_seconds // 60 }}m {{ p.charging_seconds % 60 }}s
+                {%- else -%}{{ p.charging_seconds }}s
+                {%- endif -%}
               </div>
             </div>
             <div class="mode-toggle">

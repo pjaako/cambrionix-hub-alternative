@@ -53,22 +53,10 @@ function renderPort(p, hubId, modes) {
         <span class="tile-status">${p.attachment} · ${p.status}</span>
       </div>
       <div class="tile-stats">
-        <div>
-          <div class="tile-stat-label">Voltage</div>
-          <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? p.voltage_mv + ' mV' : '—'}</div>
-        </div>
-        <div>
-          <div class="tile-stat-label">Current</div>
-          <div class="tile-stat-value">${attached && !isPending ? p.current_ma + ' mA' : '—'}</div>
-        </div>
-        <div>
-          <div class="tile-stat-label">Energy</div>
-          <div class="tile-stat-value">${attached && !isPending ? p.energy_mwh + ' mWh' : '—'}</div>
-        </div>
-        <div>
-          <div class="tile-stat-label">Time</div>
-          <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : '—'}</div>
-        </div>
+        <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? p.voltage_mv + ' mV' : '—'}</div>
+        <div class="tile-stat-value">${attached && !isPending ? p.current_ma + ' mA' : '—'}</div>
+        <div class="tile-stat-value">${attached && !isPending ? p.energy_mwh + ' mWh' : '—'}</div>
+        <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : '—'}</div>
       </div>
       <div class="mode-toggle">${toggle}</div>
     </div>`;
