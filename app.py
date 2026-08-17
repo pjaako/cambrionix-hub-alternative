@@ -30,7 +30,7 @@ class ModeRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    hubs_data = hub.get_hubs()
+    hubs_data = sorted(hub.get_hubs(), key=lambda h: h["hub_id"])
     return templates.TemplateResponse(
         request=request, name="index.html", context={"hubs": hubs_data}
     )
@@ -38,7 +38,7 @@ def index(request: Request):
 
 @app.get("/api/hubs")
 def api_hubs():
-    return hub.get_hubs()
+    return sorted(hub.get_hubs(), key=lambda h: h["hub_id"])
 
 
 @app.post("/api/hubs/discover", status_code=202)

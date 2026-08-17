@@ -123,6 +123,12 @@ async function refresh() {
                 }
             }
 
+            // Keep sections in the order the backend returned them (alphabetical
+            // by hub_id); appendChild moves an existing node rather than copying it.
+            for (const hub of hubs) {
+                container.appendChild(container.querySelector(`.hub-section[data-hub-id="${hub.hub_id}"]`));
+            }
+
             // remove sections for hubs that disappeared
             const seen = new Set(hubs.map(h => h.hub_id));
             container.querySelectorAll('.hub-section').forEach(s => {
