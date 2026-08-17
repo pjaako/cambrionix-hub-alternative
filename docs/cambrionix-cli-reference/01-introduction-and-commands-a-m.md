@@ -247,6 +247,8 @@ Flags: R
 >>
 ```
 
+(Community Note: on at least one Universal-firmware hub, the actual response uses a different format/labels than shown above — `System up for:`, `5V Now:`, `5V Min:`, `5V Max:`, `5V Flags:`, `Rebooted flag:` — and `5V Now` is in **volts** (e.g. `5.13`), not millivolts. Verified 2026-08-17 against real hardware, PSU-adjustment-confirmed. Treat the field names and units above as unverified for this firmware; parse defensively.)
+
 ### 3.7. host
 
 The `host` command shows if a USB host is present and sets how the hub responds to host detection.
