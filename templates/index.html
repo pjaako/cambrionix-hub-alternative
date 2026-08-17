@@ -26,7 +26,6 @@
 
       --c-off:      #F87171;
       --c-sync:     #60A5FA;
-      --c-biased:   #C084FC;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -270,7 +269,6 @@
     .mode-toggle input:checked + .opt-on     { color: #1B1B1B; background: var(--c-active); }
     .mode-toggle input:checked + .opt-off    { color: #fff; background: var(--c-neutral); }
     .mode-toggle input:checked + .opt-sync   { color: #fff; background: var(--c-sync); }
-    .mode-toggle input:checked + .opt-biased { color: #fff; background: var(--c-biased); }
 
     .mode-toggle input:not(:checked) + label:hover {
       color: var(--text);
@@ -290,11 +288,15 @@
     <p class="no-hubs">No hubs detected. Check that the hub is connected and powered on.</p>
     {% endif %}
     {% for hub in hubs %}
+    {%- set has_sync = 'sync' in hub.modes -%}
+    {%- set mode_order = ['off', 'sync', 'on'] if has_sync else ['off', 'on'] -%}
+    {%- set mode_labels = {'off': 'off', 'sync': 'data', 'on': 'power'} if has_sync else {'off': 'off', 'on': 'data+power'} -%}
     <details open class="hub-section" data-hub-id="{{ hub.hub_id }}">
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">{{ hub.hub_id }}</span>
-        <span class="hub-meta">{{ hub.ports | length }} ports · {{ hub.modes | join(' / ') }}</span>
+        <span class="hub-meta">{{ hub.ports | length }} ports ·
+          {%- for m in mode_order if m in hub.modes %} {{ mode_labels[m] }}{{ ' /' if not loop.last else '' }}{% endfor %}</span>
       </summary>
       <div class="hub-ports">
         <div class="hub-ports-body">
@@ -334,11 +336,11 @@
               </div>
             </div>
             <div class="mode-toggle">
-              {% for m in hub.modes %}
+              {% for m in mode_order if m in hub.modes %}
               <input type="radio" name="port-mode-{{ hub.hub_id }}-{{ p.id }}" id="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}"
                      value="{{ m }}" {{ 'checked' if m == write_mode else '' }}
                      onchange="setMode('{{ hub.hub_id }}', {{ p.id }}, '{{ m }}')">
-              <label for="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}" class="opt-{{ m }}">{{ m }}</label>
+              <label for="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}" class="opt-{{ m }}">{{ mode_labels[m] }}</label>
               {% endfor %}
             </div>
           </div>

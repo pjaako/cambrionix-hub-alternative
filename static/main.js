@@ -6,6 +6,17 @@ function writeMode(status) {
     return (status === 'off' || status === 'sync' || status === 'biased') ? status : 'on';
 }
 
+// Reorder/relabel raw mode values for display: "biased" is hidden (not
+// meaningful to end users), and the remaining values get intuitive names.
+function displayModes(modes) {
+    const hasSync = modes.includes('sync');
+    const order = hasSync ? ['off', 'sync', 'on'] : ['off', 'on'];
+    const labels = hasSync
+        ? { off: 'off', sync: 'data', on: 'power' }
+        : { off: 'off', on: 'data+power' };
+    return order.filter(m => modes.includes(m)).map(m => ({ value: m, label: labels[m] }));
+}
+
 function fmt(seconds) {
     if (seconds == null) return '—';
     const h = Math.floor(seconds / 3600);
@@ -29,12 +40,12 @@ function renderPort(p, hubId, modes) {
         ? p.voltage_v * p.current_ma / 1000 : 0;
     const namePrefix = `port-mode-${hubId}-${p.id}`;
 
-    const toggle = modes.map(m => `
+    const toggle = displayModes(modes).map(({ value: m, label }) => `
         <input type="radio" name="${namePrefix}" id="md-${hubId}-${p.id}-${m}"
                value="${m}" ${m === displayedMode ? 'checked' : ''}
                onchange="setMode('${hubId}', ${p.id}, '${m}')"
                ${isPending ? 'disabled' : ''}>
-        <label for="md-${hubId}-${p.id}-${m}" class="opt-${m}">${m}</label>`
+        <label for="md-${hubId}-${p.id}-${m}" class="opt-${m}">${label}</label>`
     ).join('');
 
     return `<div class="port-tile s-${s} ${isPending ? 'pending' : ''}">
@@ -70,7 +81,7 @@ function renderHub(hub) {
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">${hub.hub_id}</span>
-        <span class="hub-meta">${hub.ports.length} ports · ${hub.modes.join(' / ')}</span>
+        <span class="hub-meta">${hub.ports.length} ports · ${displayModes(hub.modes).map(dm => dm.label).join(' / ')}</span>
       </summary>
       <div class="hub-ports">
         <div class="hub-ports-body">
