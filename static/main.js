@@ -47,7 +47,7 @@ function renderPort(p, hubId, modes) {
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
         </button>`;
 
-    return `<div class="port-tile s-${s} ${isPending ? 'pending' : ''}">
+    return `<div class="port-tile s-${s} ${attached ? '' : 'unattached'} ${isPending ? 'pending' : ''}">
       <div class="tile-head">
         <span class="tile-port">${String(p.id).padStart(2, '0')}</span>
       </div>
@@ -64,7 +64,7 @@ function renderPort(p, hubId, modes) {
             <path d="M17 9h2v6h-2"/>
             ${attached ? '<rect x="9" y="10" width="6" height="4" rx="1" fill="currentColor" stroke="none"/>' : ''}
           </svg>
-          ${p.status}
+          <span class="tile-status-label">${p.status}</span>
         </span>
         ${toggle}
       </div>
