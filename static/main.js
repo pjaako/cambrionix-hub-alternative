@@ -58,7 +58,12 @@ function renderPort(p, hubId, modes) {
         <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : ''}</div>
       </div>
       <div class="tile-foot">
-        <span class="tile-status">${p.attachment} · ${p.status}</span>
+        <span class="tile-status">
+          <svg class="icon-attach" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-label="${attached ? 'Attached' : 'Detached'}"><title>${attached ? 'Attached' : 'Detached'}</title>
+            ${attached ? '<circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/>' : '<circle cx="12" cy="12" r="7"/>'}
+          </svg>
+          ${p.status}
+        </span>
         ${toggle}
       </div>
     </div>`;

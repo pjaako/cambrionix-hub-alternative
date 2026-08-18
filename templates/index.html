@@ -212,6 +212,7 @@
 
     /* ── PORT TILE ── */
     .port-tile {
+      position: relative;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -223,6 +224,8 @@
     }
     .port-tile.pending { opacity: 0.6; }
     .port-tile.s-off { background: var(--c-neutral); opacity: 0.6; }
+    .port-tile.s-off .tile-stats,
+    .port-tile.s-off .tile-status { display: none; }
 
     /* ── TILE HEADER ── */
     .tile-head {
@@ -240,17 +243,19 @@
 
     /* ── TILE FOOTER (temporary placement) ── */
     .tile-foot {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding-right: 30px;
     }
     .tile-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
       font-size: 10px;
       font-weight: 600;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--muted);
     }
+    .icon-attach { flex-shrink: 0; }
 
     /* ── TILE STATS ── */
     .tile-stats {
@@ -265,12 +270,14 @@
     }
     .s-idle .tile-stat-value { color: var(--c-idle); }
 
-    /* ── POWER BUTTON ── */
+    /* ── POWER BUTTON (nailed to the tile's bottom-right corner) ── */
     .pwr-btn {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
       border: none;
       background: none;
       padding: 4px;
-      margin: -4px;
       line-height: 0;
       color: var(--muted);
       cursor: pointer;
@@ -344,7 +351,12 @@
               </div>
             </div>
             <div class="tile-foot">
-              <span class="tile-status">{{ p.attachment }} &middot; {{ p.status }}</span>
+              <span class="tile-status">
+                <svg class="icon-attach" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-label="{{ 'Attached' if attached else 'Detached' }}"><title>{{ 'Attached' if attached else 'Detached' }}</title>
+                  {% if attached %}<circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/>{% else %}<circle cx="12" cy="12" r="7"/>{% endif %}
+                </svg>
+                {{ p.status }}
+              </span>
               <button type="button" class="pwr-btn {{ 'is-on' if is_on else '' }}"
                       aria-label="{{ 'Turn charging off' if is_on else 'Turn charging on' }}" aria-pressed="{{ 'true' if is_on else 'false' }}"
                       onclick="togglePort('{{ hub.hub_id }}', {{ p.id }}, '{{ write_mode }}')">
