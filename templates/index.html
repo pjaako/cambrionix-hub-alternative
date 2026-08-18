@@ -215,7 +215,7 @@
     .port-tile {
       position: relative;
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       gap: 10px;
       padding: 12px 14px 14px;
       border: 1px solid var(--border);
@@ -225,17 +225,76 @@
     }
     .port-tile.pending { opacity: 0.6; }
     .port-tile.s-off { background: var(--c-neutral); opacity: 0.6; }
-    /* Unpowered ports can't sense attachment at all, so hide the pictogram too, not just the label. */
+    /* Unpowered ports can't sense attachment or charge state at all, so hide both. */
     .port-tile.s-off .tile-stats,
     .port-tile.s-off .tile-status { display: none; }
     .port-tile.unattached .tile-stats,
     .port-tile.unattached .tile-status-label { display: none; }
+
+    .tile-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* ── CHARGE BATTERY ── */
+    .tile-battery {
+      width: 30px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2px 0;
+      color: var(--muted);
+    }
+    .tile-battery.st-charging { color: var(--c-active); }
+    .tile-battery.st-finished { color: var(--c-finished); }
+    .tile-battery:not(.st-charging):not(.st-finished) {
+      animation: battery-shimmer 1.8s ease-in-out infinite;
+    }
+    @keyframes battery-shimmer {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    .battery-nub {
+      width: 12px;
+      height: 5px;
+      border-radius: 1px 1px 0 0;
+      background: currentColor;
+    }
+    .battery-body {
+      flex: 1;
+      width: 100%;
+      box-sizing: border-box;
+      border: 2px solid currentColor;
+      border-radius: 3px;
+      padding: 4px;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 4px;
+    }
+    .brick {
+      flex: 1;
+      border-radius: 1px;
+      background: currentColor;
+      opacity: 0;
+    }
+    .tile-battery.st-finished .brick { opacity: 1; }
+    .tile-battery.st-charging .brick-1 { animation: brick1 3.2s linear infinite; animation-delay: var(--phase, 0ms); }
+    .tile-battery.st-charging .brick-2 { animation: brick2 3.2s linear infinite; animation-delay: var(--phase, 0ms); }
+    .tile-battery.st-charging .brick-3 { animation: brick3 3.2s linear infinite; animation-delay: var(--phase, 0ms); }
+    @keyframes brick1 { 0%, 24.9% { opacity: 0; } 25%, 100% { opacity: 1; } }
+    @keyframes brick2 { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
+    @keyframes brick3 { 0%, 74.9% { opacity: 0; } 75%, 100% { opacity: 1; } }
 
     /* ── TILE HEADER ── */
     .tile-head {
       display: flex;
       align-items: center;
       justify-content: flex-end;
+      gap: 6px;
     }
     .tile-port {
       font-family: var(--mono);
@@ -347,35 +406,49 @@
           {%- set s = 'off' if p.status == 'off' else ('active' if attached else 'idle') -%}
           {%- set is_on = write_mode != 'off' -%}
           <div class="port-tile s-{{ s }} {{ '' if attached else 'unattached' }}">
-            <div class="tile-head">
-              <span class="tile-port">{{ '%02d' | format(p.id) }}</span>
-            </div>
-            <div class="tile-stats">
-              <div class="tile-stat-value">{{ (p.voltage_mv ~ " mV") if (p.voltage_mv is not none and attached) else "—" }}</div>
-              <div class="tile-stat-value">{{ (p.current_ma ~ " mA") if attached else "—" }}</div>
-              <div class="tile-stat-value">{{ (p.energy_mwh ~ " mWh") if attached else "—" }}</div>
-              <div class="tile-stat-value">
-                {%- if not attached or p.charging_seconds is none -%}—
-                {%- elif p.charging_seconds >= 3600 -%}{{ p.charging_seconds // 3600 }}h {{ (p.charging_seconds % 3600) // 60 }}m
-                {%- elif p.charging_seconds >= 60 -%}{{ p.charging_seconds // 60 }}m {{ p.charging_seconds % 60 }}s
-                {%- else -%}{{ p.charging_seconds }}s
-                {%- endif -%}
+            {% if p.status != 'off' and attached %}
+            <div class="tile-battery st-{{ p.status }}">
+              <div class="battery-nub"></div>
+              <div class="battery-body">
+                <span class="brick brick-1"></span>
+                <span class="brick brick-2"></span>
+                <span class="brick brick-3"></span>
               </div>
             </div>
-            <div class="tile-foot">
-              <span class="tile-status st-{{ p.status }}">
+            {% endif %}
+            <div class="tile-body">
+              <div class="tile-head">
+                {% if p.status != 'off' %}
                 <svg class="icon-attach {{ 'is-attached' if attached else '' }}" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="{{ 'Attached' if attached else 'Detached' }}"><title>{{ 'Attached' if attached else 'Detached' }}</title>
                   <path d="M7 9H5v6h2"/>
                   <path d="M17 9h2v6h-2"/>
                   {% if attached %}<rect x="9" y="10" width="6" height="4" rx="1" fill="currentColor" stroke="none"/>{% endif %}
                 </svg>
-                <span class="tile-status-label">{{ p.status }}</span>
-              </span>
-              <button type="button" class="pwr-btn {{ 'is-on' if is_on else '' }}"
-                      aria-label="{{ 'Turn charging off' if is_on else 'Turn charging on' }}" aria-pressed="{{ 'true' if is_on else 'false' }}"
-                      onclick="togglePort('{{ hub.hub_id }}', {{ p.id }}, '{{ write_mode }}')">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
-              </button>
+                {% endif %}
+                <span class="tile-port">{{ '%02d' | format(p.id) }}</span>
+              </div>
+              <div class="tile-stats">
+                <div class="tile-stat-value">{{ (p.voltage_mv ~ " mV") if (p.voltage_mv is not none and attached) else "—" }}</div>
+                <div class="tile-stat-value">{{ (p.current_ma ~ " mA") if attached else "—" }}</div>
+                <div class="tile-stat-value">{{ (p.energy_mwh ~ " mWh") if attached else "—" }}</div>
+                <div class="tile-stat-value">
+                  {%- if not attached or p.charging_seconds is none -%}—
+                  {%- elif p.charging_seconds >= 3600 -%}{{ p.charging_seconds // 3600 }}h {{ (p.charging_seconds % 3600) // 60 }}m
+                  {%- elif p.charging_seconds >= 60 -%}{{ p.charging_seconds // 60 }}m {{ p.charging_seconds % 60 }}s
+                  {%- else -%}{{ p.charging_seconds }}s
+                  {%- endif -%}
+                </div>
+              </div>
+              <div class="tile-foot">
+                <span class="tile-status st-{{ p.status }}">
+                  <span class="tile-status-label">{{ p.status }}</span>
+                </span>
+                <button type="button" class="pwr-btn {{ 'is-on' if is_on else '' }}"
+                        aria-label="{{ 'Turn charging off' if is_on else 'Turn charging on' }}" aria-pressed="{{ 'true' if is_on else 'false' }}"
+                        onclick="togglePort('{{ hub.hub_id }}', {{ p.id }}, '{{ write_mode }}')">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
+                </button>
+              </div>
             </div>
           </div>
           {% endfor %}

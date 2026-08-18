@@ -1,4 +1,5 @@
 let pendingPorts = new Map(); // "hubId-portId" -> desiredMode
+const BRICK_CYCLE_MS = 3200; // must match the brick1/2/3 keyframe durations in index.html
 
 // Derive the write-vocabulary mode (on/off/sync/biased) a status corresponds to,
 // for comparing against the mode-toggle buttons.
@@ -47,26 +48,46 @@ function renderPort(p, hubId, modes) {
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
         </button>`;
 
+    const isOff = p.status === 'off';
+    const attachIcon = isOff ? '' : `
+        <svg class="icon-attach ${attached ? 'is-attached' : ''}" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="${attached ? 'Attached' : 'Detached'}"><title>${attached ? 'Attached' : 'Detached'}</title>
+          <path d="M7 9H5v6h2"/>
+          <path d="M17 9h2v6h-2"/>
+          ${attached ? '<rect x="9" y="10" width="6" height="4" rx="1" fill="currentColor" stroke="none"/>' : ''}
+        </svg>`;
+    // Polling replaces this element every 2s, well inside the 3.2s brick
+    // cycle, so a plain animation would restart at 0% each time and never
+    // reach the "all three lit" state. Sync the phase to wall-clock time
+    // instead, so a fresh element resumes mid-cycle rather than restarting.
+    const battery = (isOff || !attached) ? '' : `
+      <div class="tile-battery st-${p.status}" style="--phase: -${Date.now() % BRICK_CYCLE_MS}ms">
+        <div class="battery-nub"></div>
+        <div class="battery-body">
+          <span class="brick brick-1"></span>
+          <span class="brick brick-2"></span>
+          <span class="brick brick-3"></span>
+        </div>
+      </div>`;
+
     return `<div class="port-tile s-${s} ${attached ? '' : 'unattached'} ${isPending ? 'pending' : ''}">
-      <div class="tile-head">
-        <span class="tile-port">${String(p.id).padStart(2, '0')}</span>
-      </div>
-      <div class="tile-stats">
-        <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? p.voltage_mv + ' mV' : ''}</div>
-        <div class="tile-stat-value">${attached && !isPending ? p.current_ma + ' mA' : ''}</div>
-        <div class="tile-stat-value">${attached && !isPending ? p.energy_mwh + ' mWh' : ''}</div>
-        <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : ''}</div>
-      </div>
-      <div class="tile-foot">
-        <span class="tile-status st-${p.status}">
-          <svg class="icon-attach ${attached ? 'is-attached' : ''}" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="${attached ? 'Attached' : 'Detached'}"><title>${attached ? 'Attached' : 'Detached'}</title>
-            <path d="M7 9H5v6h2"/>
-            <path d="M17 9h2v6h-2"/>
-            ${attached ? '<rect x="9" y="10" width="6" height="4" rx="1" fill="currentColor" stroke="none"/>' : ''}
-          </svg>
-          <span class="tile-status-label">${p.status}</span>
-        </span>
-        ${toggle}
+      ${battery}
+      <div class="tile-body">
+        <div class="tile-head">
+          ${attachIcon}
+          <span class="tile-port">${String(p.id).padStart(2, '0')}</span>
+        </div>
+        <div class="tile-stats">
+          <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? p.voltage_mv + ' mV' : ''}</div>
+          <div class="tile-stat-value">${attached && !isPending ? p.current_ma + ' mA' : ''}</div>
+          <div class="tile-stat-value">${attached && !isPending ? p.energy_mwh + ' mWh' : ''}</div>
+          <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : ''}</div>
+        </div>
+        <div class="tile-foot">
+          <span class="tile-status st-${p.status}">
+            <span class="tile-status-label">${p.status}</span>
+          </span>
+          ${toggle}
+        </div>
       </div>
     </div>`;
 }
