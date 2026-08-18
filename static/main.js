@@ -18,7 +18,7 @@ function displayModes(modes) {
 }
 
 function fmt(seconds) {
-    if (seconds == null) return '—';
+    if (seconds == null) return '';
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
@@ -37,28 +37,30 @@ function renderPort(p, hubId, modes) {
             : p.status === 'off' ? 'off'
             : attached           ? 'active'
             :                      'idle';
-    const namePrefix = `port-mode-${hubId}-${p.id}`;
 
-    const toggle = displayModes(modes).map(({ value: m, label }) => `
-        <input type="radio" name="${namePrefix}" id="md-${hubId}-${p.id}-${m}"
-               value="${m}" ${m === displayedMode ? 'checked' : ''}
-               onchange="setMode('${hubId}', ${p.id}, '${m}')"
-               ${isPending ? 'disabled' : ''}>
-        <label for="md-${hubId}-${p.id}-${m}" class="opt-${m}">${label}</label>`
-    ).join('');
+    const isOn = displayedMode !== 'off';
+    const btnClass = isPending ? 'pwr-btn is-pending' : `pwr-btn ${isOn ? 'is-on' : ''}`;
+    const toggle = `
+        <button type="button" class="${btnClass}" ${isPending ? 'disabled' : ''}
+                aria-label="${isOn ? 'Turn charging off' : 'Turn charging on'}" aria-pressed="${isOn}"
+                onclick="togglePort('${hubId}', ${p.id}, '${displayedMode}')">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
+        </button>`;
 
     return `<div class="port-tile s-${s} ${isPending ? 'pending' : ''}">
       <div class="tile-head">
         <span class="tile-port">${String(p.id).padStart(2, '0')}</span>
-        <span class="tile-status">${p.attachment} · ${p.status}</span>
       </div>
       <div class="tile-stats">
-        <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? p.voltage_mv + ' mV' : '—'}</div>
-        <div class="tile-stat-value">${attached && !isPending ? p.current_ma + ' mA' : '—'}</div>
-        <div class="tile-stat-value">${attached && !isPending ? p.energy_mwh + ' mWh' : '—'}</div>
-        <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : '—'}</div>
+        <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? p.voltage_mv + ' mV' : ''}</div>
+        <div class="tile-stat-value">${attached && !isPending ? p.current_ma + ' mA' : ''}</div>
+        <div class="tile-stat-value">${attached && !isPending ? p.energy_mwh + ' mWh' : ''}</div>
+        <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : ''}</div>
       </div>
-      <div class="mode-toggle">${toggle}</div>
+      <div class="tile-foot">
+        <span class="tile-status">${p.attachment} · ${p.status}</span>
+        ${toggle}
+      </div>
     </div>`;
 }
 
@@ -136,6 +138,10 @@ async function refresh() {
     } catch (e) {
         document.getElementById('error').textContent = e.message;
     }
+}
+
+function togglePort(hubId, portId, currentMode) {
+    setMode(hubId, portId, currentMode === 'off' ? 'on' : 'off');
 }
 
 async function setMode(hubId, portId, mode) {

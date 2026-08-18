@@ -228,7 +228,7 @@
     .tile-head {
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: flex-end;
     }
     .tile-port {
       font-family: var(--mono);
@@ -237,16 +237,19 @@
       color: var(--text);
     }
     .s-idle .tile-port { color: var(--muted); }
+
+    /* ── TILE FOOTER (temporary placement) ── */
+    .tile-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
     .tile-status {
-      margin-left: auto;
       font-size: 10px;
       font-weight: 600;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--muted);
-      text-align: right;
-      white-space: normal;
-      min-width: 0;
     }
 
     /* ── TILE STATS ── */
@@ -262,39 +265,27 @@
     }
     .s-idle .tile-stat-value { color: var(--c-idle); }
 
-    /* ── MODE TOGGLE ── */
-    .mode-toggle {
-      display: flex;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      overflow: hidden;
-      background: var(--bg);
-    }
-    .mode-toggle input[type="radio"] { display: none; }
-    .mode-toggle label {
-      flex: 1;
-      text-align: center;
-      padding: 8px 0;
-      font-family: var(--sans);
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
+    /* ── POWER BUTTON ── */
+    .pwr-btn {
+      border: none;
+      background: none;
+      padding: 4px;
+      margin: -4px;
+      line-height: 0;
       color: var(--muted);
-      background: transparent;
       cursor: pointer;
-      transition: color 0.1s, background 0.1s;
-      user-select: none;
+      transition: color 0.15s;
     }
-    .mode-toggle label + label { border-left: 1px solid var(--border); }
-
-    .mode-toggle input:checked + .opt-on     { color: #1B1B1B; background: var(--c-active); }
-    .mode-toggle input:checked + .opt-off    { color: #fff; background: var(--c-neutral); }
-    .mode-toggle input:checked + .opt-sync   { color: #fff; background: var(--c-sync); }
-
-    .mode-toggle input:not(:checked) + label:hover {
-      color: var(--text);
-      background: var(--surface);
+    .pwr-btn:hover:not(:disabled) { color: var(--text); }
+    .pwr-btn:disabled { cursor: not-allowed; }
+    .pwr-btn.is-on { color: var(--c-active); }
+    .pwr-btn.is-pending {
+      color: var(--c-sync);
+      animation: pwr-pulse 1s ease-in-out infinite;
+    }
+    @keyframes pwr-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
     }
   </style>
 </head>
@@ -335,10 +326,10 @@
           {%- set attached = p.attachment != 'detached' -%}
           {%- set write_mode = p.status if p.status in ('off', 'sync', 'biased') else 'on' -%}
           {%- set s = 'off' if p.status == 'off' else ('active' if attached else 'idle') -%}
+          {%- set is_on = write_mode != 'off' -%}
           <div class="port-tile s-{{ s }}">
             <div class="tile-head">
               <span class="tile-port">{{ '%02d' | format(p.id) }}</span>
-              <span class="tile-status">{{ p.attachment }} &middot; {{ p.status }}</span>
             </div>
             <div class="tile-stats">
               <div class="tile-stat-value">{{ (p.voltage_mv ~ " mV") if (p.voltage_mv is not none and attached) else "—" }}</div>
@@ -352,13 +343,13 @@
                 {%- endif -%}
               </div>
             </div>
-            <div class="mode-toggle">
-              {% for m in mode_order if m in hub.modes %}
-              <input type="radio" name="port-mode-{{ hub.hub_id }}-{{ p.id }}" id="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}"
-                     value="{{ m }}" {{ 'checked' if m == write_mode else '' }}
-                     onchange="setMode('{{ hub.hub_id }}', {{ p.id }}, '{{ m }}')">
-              <label for="md-{{ hub.hub_id }}-{{ p.id }}-{{ m }}" class="opt-{{ m }}">{{ mode_labels[m] }}</label>
-              {% endfor %}
+            <div class="tile-foot">
+              <span class="tile-status">{{ p.attachment }} &middot; {{ p.status }}</span>
+              <button type="button" class="pwr-btn {{ 'is-on' if is_on else '' }}"
+                      aria-label="{{ 'Turn charging off' if is_on else 'Turn charging on' }}" aria-pressed="{{ 'true' if is_on else 'false' }}"
+                      onclick="togglePort('{{ hub.hub_id }}', {{ p.id }}, '{{ write_mode }}')">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
+              </button>
             </div>
           </div>
           {% endfor %}
