@@ -24,6 +24,7 @@
 
       --c-off:      #F87171;
       --c-sync:     #60A5FA;
+      --c-finished: #4ADE80;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -255,7 +256,15 @@
       text-transform: uppercase;
       color: var(--muted);
     }
-    .icon-attach { flex-shrink: 0; }
+    .tile-status.st-charging { color: var(--c-active); }
+    .tile-status.st-finished { color: var(--c-finished); }
+    .tile-status.st-sync,
+    .tile-status.st-biased,
+    .tile-status.st-profiling { color: var(--c-sync); }
+
+    /* Attachment icon: only detached/attached affects its color, nothing else. */
+    .icon-attach { flex-shrink: 0; color: var(--muted); }
+    .icon-attach.is-attached { color: var(--text); }
 
     /* ── TILE STATS ── */
     .tile-stats {
@@ -351,9 +360,11 @@
               </div>
             </div>
             <div class="tile-foot">
-              <span class="tile-status">
-                <svg class="icon-attach" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-label="{{ 'Attached' if attached else 'Detached' }}"><title>{{ 'Attached' if attached else 'Detached' }}</title>
-                  {% if attached %}<circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/>{% else %}<circle cx="12" cy="12" r="7"/>{% endif %}
+              <span class="tile-status st-{{ p.status }}">
+                <svg class="icon-attach {{ 'is-attached' if attached else '' }}" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="{{ 'Attached' if attached else 'Detached' }}"><title>{{ 'Attached' if attached else 'Detached' }}</title>
+                  <path d="M7 9H5v6h2"/>
+                  <path d="M17 9h2v6h-2"/>
+                  {% if attached %}<rect x="9" y="10" width="6" height="4" rx="1" fill="currentColor" stroke="none"/>{% endif %}
                 </svg>
                 {{ p.status }}
               </span>
