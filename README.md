@@ -6,7 +6,7 @@ A Python-based application with a web GUI to control and log the charging proces
 
 - Python 3.11+
 - Cambrionix Hub (with network or USB access for API calls)
-- [CambrionixApiService](https://connect.cambrionix.com) v4.0+ installed and running on the host machine
+- [CambrionixApiService](https://connect.cambrionix.com) v4.0+ installed and running on the host machine — required by every backend **except** `CliClient.via_serial`, which needs the service *stopped* (see [Freeing the serial port](#freeing-the-serial-port-for-cliclientvia_serial))
 
 ## Getting Started
 
@@ -82,6 +82,61 @@ Key files:
 **`CliClient.via_http`** routes firmware CLI commands through the REST service's `/command` proxy endpoint, combining CLI-level directness with the multi-client access and optional cloud features the service provides. `RestApiClient` already uses this path internally for its workarounds (energy fetch, mode "on" fix), so this variant is most useful when you need to send firmware commands not exposed by the REST API.
 
 **`JsonRpcClient`** exists for compatibility with pre-4.0 service versions and for experimentation. It has never been validated against an actual older API version. Use `RestApiClient` instead for all new code.
+
+### Freeing the serial port for `CliClient.via_serial`
+
+`CambrionixApiService` holds the hub's serial port **exclusively** while it runs. `CliClient.via_serial` opens the same port directly, so the two cannot coexist — `SerialTransport` opens with `exclusive=True` and will fail immediately with `SerialException`, and the service, for its part, logs "Unresponsive hub" errors and drops the hub. **Stop the service before using the serial backend.**
+
+This affects only `CliClient.via_serial`. The other three backends (`RestApiClient`, `CliClient.via_http`, `JsonRpcClient`) all require the service to be running, so stopping it takes them offline.
+
+**Linux:**
+
+```bash
+sudo systemctl stop CambrionixApiService
+sudo systemctl start CambrionixApiService   # restore afterwards
+```
+
+**Windows** — the installer registers three separate services, all set to start automatically:
+
+| Service | Display name | Holds the serial port? |
+|---|---|---|
+| `CambrionixApiService` | Cambrionix Hub API | **Yes** |
+| `CambrionixRecorderService` | Cambrionix Recorder API | No — polls the API service |
+| `CambrionixRelayService` | Cambrionix Relay Service | No — Cambrionix Connect tunnel |
+
+Only `CambrionixApiService` claims the COM port, but the Recorder will spam reconnect errors once the API service is down, so stop all three. Run in an **Administrator** PowerShell (a non-elevated shell cannot control services):
+
+```powershell
+Stop-Service CambrionixApiService, CambrionixRecorderService, CambrionixRelayService
+
+# Optional: also prevent them restarting at boot while working on the serial backend
+Set-Service CambrionixApiService      -StartupType Manual
+Set-Service CambrionixRecorderService -StartupType Manual
+Set-Service CambrionixRelayService    -StartupType Manual
+```
+
+To restore:
+
+```powershell
+Set-Service CambrionixApiService      -StartupType Automatic
+Set-Service CambrionixRecorderService -StartupType Automatic
+Set-Service CambrionixRelayService    -StartupType Automatic
+Start-Service CambrionixApiService, CambrionixRecorderService, CambrionixRelayService
+```
+
+macOS uses `sudo /usr/bin/CambrionixApiService --remove` to stop and `--install` to start.
+
+**Verifying the port is free** (no admin needed). Replace `COM3` with your hub's port — find it under Device Manager → Ports, or via `Get-ItemProperty 'HKLM:\HARDWARE\DEVICEMAP\SERIALCOMM'`:
+
+```powershell
+Get-Service Cambrionix* | Select-Object Name, Status   # all should read Stopped
+Test-NetConnection localhost -Port 43424               # should fail once the API service is down
+$p = New-Object System.IO.Ports.SerialPort 'COM3',115200,'None',8,'One'; $p.Open(); $p.Close()
+```
+
+On Linux the equivalent check is `sudo lsof /dev/ttyUSB0` returning nothing.
+
+If the port opens but the hub never answers, it may be stuck in the unresponsive state described in `AGENTS.md` — a corrupted firmware input buffer, usually from a command sent without the required `\r\n` terminator. A USB replug does not clear it; only unplugging the hub from its power supply does.
 
 ## Testing and Debugging
 
