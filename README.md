@@ -149,6 +149,37 @@ On Linux the equivalent check is `sudo lsof /dev/ttyUSB0` returning nothing.
 
 If the port opens but the hub never answers, it may be stuck in the unresponsive state described in `AGENTS.md` — a corrupted firmware input buffer, usually from a command sent without the required `\r\n` terminator. A USB replug does not clear it; only unplugging the hub from its power supply does.
 
+## Error indication
+
+When something is wrong the UI says so instead of failing silently: the affected port tiles
+and the hub header turn red, their controls are disabled, and the header carries a plain-text
+explanation. Three things can trigger it:
+
+- **A command the hub refused** — the firmware answers `*E<nnn>` (for example
+  `*E422: Refused: an error flag is set`) and the tile shows that code.
+- **A port error flag** — `E` in the firmware `state` output, meaning the hub will refuse
+  mode changes on that port.
+- **Hub health flags** — `UV`/`OV`/`OT` from the `health` command, or the hub failing to poll
+  at all. A failing hub keeps its tiles, dimmed, showing the last known readings.
+
+Health flags latch: a hub that dipped below the under-voltage threshold keeps `UV` set, and
+refuses every mode change, until it is power-cycled — `cef` does not clear it.
+
+To see the error states without waiting for real hardware to fail, set `CAMBRIONIX_DEV_TOOLS`
+and use the injection route (absent entirely when the variable is unset):
+
+```powershell
+$env:CAMBRIONIX_DEV_TOOLS="1"; .\venv\Scripts\python.exe -m uvicorn app:app
+$h = (Invoke-RestMethod http://localhost:8000/api/hubs)[0].hub_id
+$u = "http://localhost:8000/api/debug/inject-error"
+Invoke-RestMethod -Method Post $u -ContentType application/json -Body (@{hub_id=$h; port_id=3; kind="command"} | ConvertTo-Json)
+Invoke-RestMethod -Method Post $u -ContentType application/json -Body (@{hub_id=$h; kind="health"; flags=@("UV")} | ConvertTo-Json)
+Invoke-RestMethod -Method Post $u -ContentType application/json -Body (@{hub_id=$h; clear=$true} | ConvertTo-Json)
+```
+
+`kind` is one of `command`, `port_flag`, `health` or `poll`. `verify_ui.py` runs all four
+automatically and checks both renderers agree.
+
 ## Testing and Debugging
 
 `test_api.py` is the main diagnostic script:

@@ -1,5 +1,17 @@
-let pendingPorts = new Map(); // "hubId-portId" -> desiredMode
+let pendingPorts = new Map(); // "hubId-portId" -> {mode, at}
 const BRICK_CYCLE_MS = 3200; // must match the brick1/2/3 keyframe durations in index.html
+// Backstop for a port that never reaches its requested mode and whose failure
+// the backend never reports. Must stay below _COMMAND_ERROR_TTL in controller.py
+// so a tile cannot return to normal while its explanation is still on screen.
+const PENDING_TTL_MS = 10000;
+
+// Firmware error text is arbitrary, unlike the enum values everything else
+// interpolates, so it gets escaped before going into an attribute.
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
 
 // Derive the write-vocabulary mode (on/off/sync/biased) a status corresponds to,
 // for comparing against the mode-toggle buttons.
@@ -32,7 +44,10 @@ function renderPort(p, hubId, modes) {
     const key = `${hubId}-${p.id}`;
     const isPending = pendingPorts.has(key);
     const attached = p.attachment !== 'detached';
-    const displayedMode = isPending ? pendingPorts.get(key) : writeMode(p.status);
+    const displayedMode = isPending ? pendingPorts.get(key).mode : writeMode(p.status);
+    // blocked is computed server-side (controller.py) precisely so this and the
+    // Jinja template cannot drift in how they decide what counts as an error.
+    const blocked = !!p.blocked;
 
     const s = isPending ? 'transition'
             : p.status === 'off' ? 'off'
@@ -42,7 +57,7 @@ function renderPort(p, hubId, modes) {
     const isOn = displayedMode !== 'off';
     const btnClass = isPending ? 'pwr-btn is-pending' : `pwr-btn ${isOn ? 'is-on' : ''}`;
     const toggle = `
-        <button type="button" class="${btnClass}" ${isPending ? 'disabled' : ''}
+        <button type="button" class="${btnClass}" ${isPending || blocked ? 'disabled' : ''}
                 aria-label="${isOn ? 'Turn charging off' : 'Turn charging on'}" aria-pressed="${isOn}"
                 onclick="togglePort('${hubId}', ${p.id}, '${displayedMode}')">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
@@ -69,7 +84,14 @@ function renderPort(p, hubId, modes) {
         </div>
       </div>`;
 
-    return `<div class="port-tile s-${s} ${attached ? '' : 'unattached'} ${isPending ? 'pending' : ''}">
+    const errorBadge = blocked
+        ? `<span class="tile-error" title="${esc(p.error_detail)}">${
+            p.command_error && p.command_error.code ? 'E' + esc(p.command_error.code) : 'ERROR'
+          }</span>`
+        : '';
+
+    // Keep this markup in sync with the port-tile loop in templates/index.html.
+    return `<div class="port-tile s-${s} ${attached ? '' : 'unattached'} ${isPending ? 'pending' : ''} ${blocked ? 'has-error' : ''}">
       ${battery}
       <div class="tile-body">
         <div class="tile-head">
@@ -83,6 +105,7 @@ function renderPort(p, hubId, modes) {
           <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : ''}</div>
         </div>
         <div class="tile-foot">
+          ${errorBadge}
           <span class="tile-status st-${p.status}">
             <span class="tile-status-label">${p.status}</span>
           </span>
@@ -101,6 +124,7 @@ function renderHub(hub) {
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">${hub.hub_id}</span>
+        <span class="hub-error-detail"></span>
         <div class="hub-mode-toggle-wrap">
           <div class="hub-mode-toggle">${hubToggle}</div>
           <button type="button" class="hub-lock-toggle" title="Unlock hub-wide controls" onclick="event.stopPropagation(); unlockHubToggle(this)">
@@ -131,22 +155,36 @@ async function refresh() {
 
             // update or create each hub section
             for (const hub of hubs) {
-                // Clear pending ports that have reached their target state
+                // Release pending ports. Three independent escapes, because a
+                // port that only cleared on reaching its target would stay
+                // disabled forever the moment a command was refused.
                 for (const p of hub.ports) {
                     const key = `${hub.hub_id}-${p.id}`;
-                    if (pendingPorts.has(key) && pendingPorts.get(key) === writeMode(p.status)) {
-                        pendingPorts.delete(key);
+                    const pending = pendingPorts.get(key);
+                    if (!pending) continue;
+                    if (pending.mode === writeMode(p.status)) {
+                        pendingPorts.delete(key);          // reached its target
+                    } else if (p.command_error || p.blocked) {
+                        pendingPorts.delete(key);          // refused or blocked
+                    } else if (Date.now() - pending.at > PENDING_TTL_MS) {
+                        pendingPorts.delete(key);          // never reported either way
                     }
+                }
+                if (hub.command_error || hub.error) {
+                    for (const p of hub.ports) pendingPorts.delete(`${hub.hub_id}-${p.id}`);
                 }
 
                 let section = container.querySelector(`.hub-section[data-hub-id="${hub.hub_id}"]`);
                 if (!section) {
                     container.insertAdjacentHTML('beforeend', renderHub(hub));
+                    section = container.querySelector(`.hub-section[data-hub-id="${hub.hub_id}"]`);
                 } else {
-                    section.querySelector('.hub-ports-body').innerHTML = hub.error
-                        ? `<div class="hub-error">${hub.error}</div>`
-                        : hub.ports.map(p => renderPort(p, hub.hub_id, hub.modes)).join('');
+                    // A failing hub keeps its tiles rendered from the last known
+                    // ports the backend retained, rather than being blanked.
+                    section.querySelector('.hub-ports-body').innerHTML =
+                        hub.ports.map(p => renderPort(p, hub.hub_id, hub.modes)).join('');
                 }
+                updateHubChrome(section, hub);
             }
 
             // Keep sections in the order the backend returned them (alphabetical
@@ -174,7 +212,7 @@ function togglePort(hubId, portId, currentMode) {
 
 async function setMode(hubId, portId, mode) {
     const key = `${hubId}-${portId}`;
-    pendingPorts.set(key, mode);
+    pendingPorts.set(key, { mode, at: Date.now() });
     
     // Immediate local UI refresh to show transition state
     const container = document.getElementById('hubs-container');
@@ -197,7 +235,24 @@ async function setMode(hubId, portId, mode) {
     }
 }
 
+// Hub-level state lives on the header, which renderHub() only ever builds for
+// a brand new section - existing sections have just their ports body replaced.
+// Both paths call this so the header never goes stale.
+function updateHubChrome(section, hub) {
+    if (!section) return;
+    section.classList.toggle('has-error', !!hub.blocked);
+    section.classList.toggle('is-stale', !!hub.stale);
+    section.querySelector('.hub-error-detail').textContent = hub.error_detail || '';
+    section.querySelector('.hub-lock-toggle').disabled = !!hub.blocked;
+    if (hub.blocked) {
+        const wrap = section.querySelector('.hub-mode-toggle-wrap');
+        wrap.classList.remove('unlocked');
+        wrap.querySelectorAll('.hub-mode-toggle button').forEach(b => b.disabled = true);
+    }
+}
+
 function unlockHubToggle(unlockBtn) {
+    if (unlockBtn.closest('.hub-section').classList.contains('has-error')) return;
     const wrap = unlockBtn.closest('.hub-mode-toggle-wrap');
     wrap.classList.add('unlocked');
     wrap.querySelectorAll('.hub-mode-toggle button').forEach(b => b.disabled = false);

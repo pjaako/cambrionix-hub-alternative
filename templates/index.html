@@ -25,6 +25,12 @@
       --c-off:      #F87171;
       --c-sync:     #60A5FA;
       --c-finished: #4ADE80;
+
+      /* Fault state. --c-off stays what it is: the colour of the off *status*,
+         which is a different idea from something being wrong. */
+      --c-error:        #F87171;
+      --c-error-bg:     #2E1414;
+      --c-error-border: #7F1D1D;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -186,10 +192,28 @@
     /* ── PORT GRID ── */
     .hub-ports { padding: 16px 20px; }
 
-    .hub-error {
-      font-size: 13px;
+    /* A failing hub keeps its tiles: an operator needs to see what the ports
+       were doing when it broke. is-stale dims them to signal they are no longer
+       live readings. */
+    .hub-section.has-error { border-color: var(--c-error-border); }
+    .hub-section.has-error .hub-header { background: var(--c-error-bg); }
+    .hub-section.is-stale .hub-ports-body { opacity: 0.5; }
+
+    .hub-error-detail {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
       font-weight: 500;
-      color: var(--c-off);
+      color: var(--c-error);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hub-error-detail:empty { display: none; }
+
+    .hub-lock-toggle:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
     }
 
     .no-hubs {
@@ -225,6 +249,21 @@
     }
     .port-tile.pending { opacity: 0.6; }
     .port-tile.s-off { background: var(--c-neutral); opacity: 0.6; }
+    /* Error styling wins over every status colour, and keeps full opacity so a
+       faulted port reads as louder than an idle one, not quieter. */
+    .port-tile.has-error {
+      background: var(--c-error-bg);
+      box-shadow: inset 0 0 0 1px var(--c-error-border);
+      opacity: 1;
+    }
+    .tile-error {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--c-error);
+      cursor: help;
+    }
     /* Unpowered ports can't sense attachment or charge state at all, so hide both. */
     .port-tile.s-off .tile-stats,
     .port-tile.s-off .tile-status { display: none; }
@@ -355,7 +394,7 @@
       transition: color 0.15s;
     }
     .pwr-btn:hover:not(:disabled) { color: var(--text); }
-    .pwr-btn:disabled { cursor: not-allowed; }
+    .pwr-btn:disabled { cursor: not-allowed; opacity: 0.35; }
     .pwr-btn.is-on { color: var(--c-active); }
     .pwr-btn.is-pending {
       color: var(--c-sync);
@@ -382,17 +421,18 @@
     {%- set has_sync = 'sync' in hub.modes -%}
     {%- set mode_order = ['off', 'sync', 'on'] if has_sync else ['off', 'on'] -%}
     {%- set mode_labels = {'off': 'off', 'sync': 'data', 'on': 'power'} if has_sync else {'off': 'off', 'on': 'data+power'} -%}
-    <details open class="hub-section" data-hub-id="{{ hub.hub_id }}">
+    <details open class="hub-section {{ 'has-error' if hub.blocked else '' }} {{ 'is-stale' if hub.stale else '' }}" data-hub-id="{{ hub.hub_id }}">
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">{{ hub.hub_id }}</span>
+        <span class="hub-error-detail">{{ hub.error_detail or '' }}</span>
         <div class="hub-mode-toggle-wrap">
           <div class="hub-mode-toggle">
             {% for m in mode_order if m in hub.modes %}
             <button type="button" disabled onclick="event.stopPropagation(); setHubMode('{{ hub.hub_id }}', '{{ m }}'); relockHubToggle(this)">{{ mode_labels[m] }}</button>
             {% endfor %}
           </div>
-          <button type="button" class="hub-lock-toggle" title="Unlock hub-wide controls" onclick="event.stopPropagation(); unlockHubToggle(this)">
+          <button type="button" class="hub-lock-toggle" title="Unlock hub-wide controls" {{ 'disabled' if hub.blocked else '' }} onclick="event.stopPropagation(); unlockHubToggle(this)">
             <svg class="icon-locked" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
             <svg class="icon-unlocked" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.75-1.5"/></svg>
           </button>
@@ -400,12 +440,14 @@
       </summary>
       <div class="hub-ports">
         <div class="hub-ports-body">
+          {# Keep this tile markup in sync with renderPort() in static/main.js:
+             the SSR render and the 2s poll render must produce the same DOM. #}
           {% for p in hub.ports %}
           {%- set attached = p.attachment != 'detached' -%}
           {%- set write_mode = p.status if p.status in ('off', 'sync', 'biased') else 'on' -%}
           {%- set s = 'off' if p.status == 'off' else ('active' if attached else 'idle') -%}
           {%- set is_on = write_mode != 'off' -%}
-          <div class="port-tile s-{{ s }} {{ '' if attached else 'unattached' }}">
+          <div class="port-tile s-{{ s }} {{ '' if attached else 'unattached' }} {{ 'has-error' if p.blocked else '' }}">
             {% if p.status != 'off' and attached %}
             <div class="tile-battery st-{{ p.status }}">
               <div class="battery-nub"></div>
@@ -440,10 +482,11 @@
                 </div>
               </div>
               <div class="tile-foot">
+                {% if p.blocked %}<span class="tile-error" title="{{ p.error_detail or '' }}">{{ 'E' ~ p.command_error.code if p.command_error and p.command_error.code else 'ERROR' }}</span>{% endif %}
                 <span class="tile-status st-{{ p.status }}">
                   <span class="tile-status-label">{{ p.status }}</span>
                 </span>
-                <button type="button" class="pwr-btn {{ 'is-on' if is_on else '' }}"
+                <button type="button" class="pwr-btn {{ 'is-on' if is_on else '' }}" {{ 'disabled' if p.blocked else '' }}
                         aria-label="{{ 'Turn charging off' if is_on else 'Turn charging on' }}" aria-pressed="{{ 'true' if is_on else 'false' }}"
                         onclick="togglePort('{{ hub.hub_id }}', {{ p.id }}, '{{ write_mode }}')">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>

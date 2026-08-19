@@ -90,6 +90,8 @@ See `bugs/README.md` for the full index. Summary:
 - `GET /api/v1/hubs/{hubId}/ports/{portId}` does not return the `energy` field (`power.charge.charging.energy`) despite it being marked `required` in the OpenAPI schema. Confirmed ≥4.0.0 through 4.0.1; **appears fixed in 4.1.2** (field now present, verified 2026-08-03). Workaround (`RestApiClient._fetch_energies()`, merges energy from a `state` CLI command via the `/command` proxy) is left in place pending more soak time on 4.1.2 — it's a no-op once the native field is populated. Full report: `bugs/bug_report_rest_api_missing_energy_wh.md`.
 - `POST /api/v1/hubs/{hubId}/ports/{portId}/mode` with `{"mode": "on"}` returns `{"result": true}` while the port stays stuck on `"off"`. Confirmed ≥4.0.0 through 4.0.1; **appears fixed in 4.1.2** (two clean off→on round trips verified 2026-08-03, previously 100% reproducible). Workaround (`RestApiClient.set_mode("on")` bypasses the REST endpoint, sends `mode c <portId>` via the firmware CLI `/command` proxy) is left in place pending more soak time. Full report: `bugs/bug_report_rest_api_mode_off_unrecoverable.md`. Reproduction script: `bugs/reproduce_mode_off_bug.py`.
 
+- **`JsonRpcClient` residual gap**: `set_mode` now raises `CommandRefused` when the JSON-RPC reply carries an `error` member, but a `cbrx_connection_set` that returns a falsy *result* with no `error` member still passes silently. Not fixable without an older service to characterise it against.
+
 ## Pending verification on Linux
 
 Commit `4f3c496` ("Run the CLI serial backend on Windows as well as Linux") was tested
@@ -121,6 +123,11 @@ activate the venv.
    hubs). Pass the real `/dev/ttyUSB*` node, or teach the lookup to resolve symlinks.
 5. **End to end:** `python test_api.py backends`, then the web app toggling a port
    off → on → off.
+6. **`health` now runs on every firmware class**, not just Universal. Only a PDSync or
+   TS3-C10 hub can confirm that its per-port voltage still comes from the `state` column and
+   is not overwritten by the health reading, and that the extra round trip per poll does not
+   hurt responsiveness. Unit-guarded by `test_pdsync_voltage_comes_from_state_not_health`,
+   but never run against that hardware.
 
 Unverified on any platform: the `OV` and `OT` health flags, and whether they block mode
 changes the way `UV` does — see `docs/cambrionix-cli-reference/01-introduction-and-commands-a-m.md` §3.6.
@@ -153,8 +160,14 @@ The default invocation calls `check_api()` first and exits early with a clear me
 
 ```bash
 source venv/bin/activate
-pytest test_ui.py -v     # UI smoke tests; starts its own server on :8001, requires hub accessible
+python -m unittest test_cli_parsing test_controller_errors -v   # no hardware needed
+python verify_ui.py      # end-to-end error UI check; needs a hub and chromium
 ```
+
+`verify_ui.py` starts its own server, injects each error kind through the dev route, and
+asserts that the SSR markup and the browser DOM agree, failing on any console error. It
+needs `python -m playwright install chromium` once. Named `verify_*` rather than `test_*`
+so pytest does not collect it — it starts a server at import time.
 
 ## Debug Logging
 
@@ -195,7 +208,7 @@ python test_api.py
 
 **Do not introduce a `hub.py`** — this name was used by an early prototype `CambrionixHub` class that predates `hub_backends.py`. It had the `\r`-only terminator bug that causes hub unresponsive state (see Known issues). All hub logic now lives in `hub_backends.py`.
 
-`test_api.py` is a standalone diagnostic/smoke-test script with a manual CLI dispatch (`if __name__ == "__main__"`). `test_ui.py` uses pytest-playwright.
+`test_api.py` is a standalone diagnostic/smoke-test script with a manual CLI dispatch (`if __name__ == "__main__"`). `test_cli_parsing.py` and `test_controller_errors.py` are `unittest` suites that mock the transport and the hub client respectively, so they run anywhere. `verify_ui.py` drives a real browser against a real hub.
 
 ## Hub Backends
 
@@ -265,8 +278,12 @@ Column 3 (Quick Charge, not currently exposed on `PortState`): `-`/`_` disallowe
 Universal firmware (`fc` `un`) instead reports a single combined flag set (order doesn't
 matter, letters are mutually exclusive per firmware docs): `A`/`D` (attachment) plus one
 of `O`/`S`/`B`/`I`/`P`/`C`/`F` (status: off/sync/biased/idle/profiling/charging/finished).
-`E`/`R`/`T`/`r` (error/rebooted/theft/vbus-reset) may also appear but aren't currently
-surfaced on `PortState`.
+`E`/`R`/`T`/`r` (error/rebooted/theft/vbus-reset) may also appear. **`E` is surfaced** as
+`PortState.error_flag` — it means the hub will refuse mode changes on that port
+(`*E422: Refused: an error flag is set`), so the UI blocks its controls. `R`/`T`/`r` are
+still not surfaced; `R` in particular is deliberately *not* treated as an error, since it
+does not block anything and `crf` clears it. PDSync/TS3-C10 have no error column at all, so
+`error_flag` is always `False` there and the hub-wide `health` probe is the only source.
 
 Full reference: `docs/cambrionix-cli-reference/02-commands-n-z-and-deprecated.md:66-112`.
 
@@ -281,7 +298,7 @@ The `state` command CSV column order (PDSync): `port, voltage_10mV, current_mA, 
 
 `PortState.energy_mwh` (milliwatt-hours) is populated by all three backends. `RestApiClient` fetches it via a firmware CLI `state` command through the `/command` proxy (workaround for a known REST API bug — see Known issues).
 
-**Universal-firmware voltage**: the `state` command's Universal variant has no voltage column (see CSV order above `## Controller`) — these are USB2 hubs with every port paralleled onto one supply rail, so per-port voltage isn't a meaningful firmware concept. `CliClient._supply_voltage_mv()` instead runs the hub-wide `health` command and applies the one reading to every port. The live-hub output format (`5V Now:   5.13`, in volts) differs from what `docs/cambrionix-cli-reference` documents (`5V_V1: 5042`, in mV) — `_supply_voltage_mv()` parses both, but only the `5V Now` volts format has been confirmed against real hardware (verified 2026-08-17 against a real Universal-firmware hub, PSU-adjustment-verified). `RestApiClient` doesn't need this workaround — the REST API's per-port `sensors` array already reports `volts` correctly on Universal hubs.
+**Universal-firmware voltage**: the `state` command's Universal variant has no voltage column (see CSV order above `## Controller`) — these are USB2 hubs with every port paralleled onto one supply rail, so per-port voltage isn't a meaningful firmware concept. `CliClient._probe_health()` instead runs the hub-wide `health` command and applies the one reading to every port. **`health` now runs on every firmware class**, not just Universal, because it is the only source of hub error flags (`UV`/`OV`/`OT`) — but only Universal takes its *voltage* from it. `get_ports()` passes `supply_mv=None` for `ps`/`sm`, so health can never overwrite the per-port reading those products report in `state` (guarded by `test_pdsync_voltage_comes_from_state_not_health`). Note this costs `ps`/`sm` hubs one extra CLI round trip per poll; if serial latency becomes a problem, run it every Nth poll for those classes only — Universal must stay every-poll since its voltage depends on it. A product without `health` answers `*E400`, which is treated as "no reading", not a failure. The live-hub output format (`5V Now:   5.13`, in volts) differs from what `docs/cambrionix-cli-reference` documents (`5V_V1: 5042`, in mV) — `_parse_health()` parses both, but only the `5V Now` volts format has been confirmed against real hardware (verified 2026-08-17 against a real Universal-firmware hub, PSU-adjustment-verified). `RestApiClient` doesn't need this workaround — the REST API's per-port `sensors` array already reports `volts` correctly on Universal hubs.
 
 ### Discovery
 
@@ -325,8 +342,27 @@ and must match what the REST service reports for the same hub.
 
 - `_hubs` — registry of live `HubClient` instances, keyed by hub ID; rebuilt by `_discover()` on a 60s interval, or immediately on a `discover` command
 - `_command_queue` — `set_mode`, `set_mode_all`, and `discover` requests enqueued by web routes; the worker drains it before each poll, and also services it during the inter-poll wait so a queued command doesn't sit until the next cycle
-- `_cache` / `_cache_lock` — last-known state per hub (`hub_id`, `modes`, `ports`, `error`); web reads take `_cache_lock` only for the list swap and never wait for hardware
-- A hub that fails to poll gets an `error` entry in the cache, and forces rediscovery on the next loop iteration
+- `_raw_state` — undecorated poll output; `_cache` is this plus error decoration, so a refusal can be folded in without re-reading hardware
+- `_cache` / `_cache_lock` — last-known state per hub (`hub_id`, `modes`, `ports`, `error`, `health`, `stale`, `blocked`, `error_detail`); web reads take `_cache_lock` only for the list swap and never wait for hardware
+- `_command_errors` — `(hub_id, port_id | None)` → `CommandError`, for commands the hub refused. `port_id=None` is a hub-wide command
+- A hub that fails to poll gets an `error` entry in the cache and forces rediscovery on the next loop iteration. Its **last-known ports are retained** and flagged `stale` rather than blanked, so the UI can keep showing what the ports were doing when it dropped
+
+### Error propagation
+
+Errors are split by lifetime, which is the whole design:
+
+| Source | Lifetime | Lives in | Cleared by |
+|---|---|---|---|
+| Firmware `E` flag, `health` flags (`UV`/`OV`/`OT`), poll failure | **State** — re-derived every poll | the poll output itself | the hardware no longer reporting it |
+| A refused command (`*E<nnn>`) | **Event** — happened once | `_command_errors` | a later success, or `_COMMAND_ERROR_TTL` (30 s), or the hub being removed |
+
+A refused command only ever *explains a click*; the reason it was refused is polled state that persists on its own, so the event can expire without the tile losing its red.
+
+`_refresh_cache_view()` is the single decoration point, called by `_poll()` **and** by the command handlers so a refusal appears immediately rather than up to 2 s later. It computes, per port, `command_error` / `blocked` / `error_detail`, and per hub `blocked` / `error_detail` / `stale`. Both renderers (the Jinja SSR loop and `renderPort()` in `main.js`) consume `blocked` and `error_detail` rather than deciding for themselves what counts as an error — that is what keeps them from drifting.
+
+`blocked` and "red" are deliberately one concept: a tile is red exactly when its controls are dead. A refused command counts, because whatever refused it will almost certainly refuse the retry; the 30 s TTL re-enables the button so a retry is never permanently barred. The client-side pending timeout in `main.js` (`PENDING_TTL_MS`, 10 s) must stay **below** that TTL, or a tile could return to normal while its explanation is still on screen.
+
+A refused `set_mode_all` is recorded under `(hub_id, None)` and paints the hub header only — sixteen red tiles from one click is noise.
 
 `set_mode(hub_id, port_id, mode)` and `set_mode_all(hub_id, mode)` just enqueue a command and return immediately (202-style, fire-and-forget); the worker applies it via `h.set_mode(port_id, mode)` — all three backends accept `port_id=None` to mean "every port on the hub" (see `HubClient.set_mode` in `hub_backends.py`).
 
@@ -339,6 +375,17 @@ The FastAPI app (`app.py`) exposes:
 - `POST /api/hubs/discover` (202) — enqueues on-demand rediscovery
 - `POST /api/hubs/{hub_id}/ports/{port_id}/mode` (202) — body `{"mode": "..."}`, validates against cached modes, enqueues a single-port `set_mode`
 - `POST /api/hubs/{hub_id}/ports/mode` (202) — body `{"mode": "..."}`, validates against cached modes, enqueues a hub-wide `set_mode_all` (every port on the hub)
+- `POST /api/debug/inject-error` (202) — **dev only**, see below
+
+Each hub in `GET /api/hubs` carries `health` (`supply_mv`, `temperature_mc`, `error_flags`, `rebooted`), `stale`, `command_error`, `blocked` and `error_detail`; each port carries `error_flag`, `command_error`, `blocked` and `error_detail`. All additive — nothing was removed.
+
+### Injecting errors (dev only)
+
+`POST /api/debug/inject-error` is registered **only** when `CAMBRIONIX_DEV_TOOLS` is set, so in a normal run it is absent from the app and from `/docs` — not merely refused. It is a separate variable from `CAMBRIONIX_DEBUG` on purpose: turning on debug logging must never open a mutation endpoint.
+
+Body: `{hub_id?, port_id?, kind, code?, message?, flags?, clear?}` where `kind` is one of `command` (a refused set_mode — expires on the TTL), `port_flag` (the firmware `E` flag — polled, persists), `health` (hub flags such as `UV`), or `poll` (the hub failing to poll). `{"clear": true}` removes everything injected for that hub.
+
+Injected faults go through the same `_refresh_cache_view()` decoration as real ones, so what you see is what a genuine failure looks like — not a parallel rendering path that could diverge.
 
 `app.py` holds a module-level `HubController` instance. Routes are read-only views of the cache except mode writes/discovery, which enqueue work for the controller's worker thread (see Controller above).
 
