@@ -242,7 +242,11 @@ function updateHubChrome(section, hub) {
     if (!section) return;
     section.classList.toggle('has-error', !!hub.blocked);
     section.classList.toggle('is-stale', !!hub.stale);
-    section.querySelector('.hub-error-detail').textContent = hub.error_detail || '';
+    // The detail ellipsises in a narrow header, so the full text has to stay
+    // reachable on hover.
+    const detail = section.querySelector('.hub-error-detail');
+    detail.textContent = hub.error_detail || '';
+    detail.title = hub.error_detail || '';
     section.querySelector('.hub-lock-toggle').disabled = !!hub.blocked;
     if (hub.blocked) {
         const wrap = section.querySelector('.hub-mode-toggle-wrap');

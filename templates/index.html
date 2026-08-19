@@ -201,6 +201,7 @@
 
     .hub-error-detail {
       flex: 1;
+      cursor: help;
       min-width: 0;
       font-size: 12px;
       font-weight: 500;
@@ -425,7 +426,7 @@
       <summary class="hub-header">
         <span class="hub-chevron">▼</span>
         <span class="hub-label">{{ hub.hub_id }}</span>
-        <span class="hub-error-detail">{{ hub.error_detail or '' }}</span>
+        <span class="hub-error-detail" title="{{ hub.error_detail or '' }}">{{ hub.error_detail or '' }}</span>
         <div class="hub-mode-toggle-wrap">
           <div class="hub-mode-toggle">
             {% for m in mode_order if m in hub.modes %}
