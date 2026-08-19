@@ -17,10 +17,21 @@ A Python-based application with a web GUI to control and log the charging proces
    ```
 
 2. **Set up the virtual environment**:
+
+   Linux/macOS:
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
+
+   Windows (PowerShell):
+   ```powershell
+   py -3 -m venv venv
+   .\venv\Scripts\Activate.ps1
+   ```
+
+   The commands below show the Linux activation form; on Windows substitute
+   `.\venv\Scripts\Activate.ps1` throughout.
 
 3. **Install dependencies**:
    ```bash

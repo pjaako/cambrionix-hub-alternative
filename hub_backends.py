@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import socket
+import sys
 import time
 from abc import ABC, abstractmethod
 
@@ -431,6 +432,37 @@ class CliTransport(ABC):
         return None
 
 
+# Cambrionix hubs expose their firmware CLI over an FTDI USB-serial chip. Windows'
+# FTDI driver appends the chip's channel letter to the serial number it reports for
+# each port instance (FTDIBUS\VID_0403+PID_6015+ABCDEFGHA\0000 -> "ABCDEFGHA"),
+# while Linux reports the bare USB device serial ("ABCDEFGH"). Strip the suffix so
+# the same hub yields the same hub_id on either platform.
+_FTDI_VID = 0x0403
+_FTDI_CHANNELS = frozenset("ABCD")  # FT4232H is the widest FTDI part, 4 channels
+
+
+def _normalize_usb_serial(info) -> str | None:
+    sn = info.serial_number
+    if not sn:
+        return None
+    if sys.platform == "win32" and info.vid == _FTDI_VID and len(sn) > 1 and sn[-1] in _FTDI_CHANNELS:
+        return sn[:-1]
+    return sn
+
+
+def _usb_serial_for_port(port: str) -> str | None:
+    """USB serial number the OS assigned to `port`, or None if it can't be determined.
+
+    Works on Linux and Windows via pyserial's port enumeration, which reads sysfs
+    and the PnP registry respectively — no external tools involved.
+    """
+    from serial.tools import list_ports
+    for info in list_ports.comports():
+        if info.device == port:
+            return _normalize_usb_serial(info)
+    return None
+
+
 class SerialTransport(CliTransport):
     def __init__(self, port: str, baud_rate: int = 115200, timeout: float = 1.0):
         self._port = port
@@ -478,18 +510,7 @@ class SerialTransport(CliTransport):
             raise serial.SerialException(f"{self._port}: {e}") from e
 
     def hub_serial(self) -> str | None:
-        import subprocess
-        try:
-            out = subprocess.run(
-                ["udevadm", "info", "--query=property", self._port],
-                capture_output=True, text=True, timeout=3,
-            ).stdout
-            for line in out.splitlines():
-                if line.startswith("ID_SERIAL_SHORT="):
-                    return line.split("=", 1)[1]
-        except Exception:
-            pass
-        return None
+        return _usb_serial_for_port(self._port)
 
     def close(self) -> None:
         if self._ser and self._ser.is_open:
@@ -566,7 +587,8 @@ class CliClient(HubClient):
         return [cls.via_http(h["serialNumber"], base) for h in data["result"]]
 
     @classmethod
-    def via_serial(cls, tty: str = "/dev/ttyUSB0") -> "CliClient":
+    def via_serial(cls, tty: str) -> "CliClient":
+        """`tty` is an OS port name: "/dev/ttyUSB0" on Linux, "COM3" on Windows."""
         return cls(SerialTransport(tty))
 
     @classmethod

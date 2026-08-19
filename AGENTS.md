@@ -8,12 +8,25 @@ Build a Python web application (GUI) to monitor and control charging processes f
 
 ## Environment
 
+The project runs on both Linux and Windows from a single codebase — platform-specific
+behaviour belongs behind a cross-platform API, not in a fork or a parallel code path.
+
 Always activate and use the virtual environment:
 
 ```bash
-source venv/bin/activate
+source venv/bin/activate          # Linux/macOS
 pip install -r requirements.txt
 ```
+
+```powershell
+.\venv\Scripts\Activate.ps1       # Windows (PowerShell)
+pip install -r requirements.txt
+```
+
+Examples throughout this file use the Linux activation form; substitute the Windows
+one as needed. Serial ports are `/dev/ttyUSB0`-style on Linux and `COM3`-style on
+Windows — `CliClient.via_serial()` takes whichever the OS uses, and
+`CliClient.discover_serial()` finds them without either being hardcoded.
 
 ## Git/SSH Configuration
 
@@ -178,7 +191,7 @@ Mode strings are normalized across all backends: `"on"`, `"off"`, `"sync"`, `"bi
 - `SerialTransport` — opens the TTY directly, sends `cmd\r\n`, reads until `>>` prompt. Local hubs only. `send_command()` uses an idle timeout: the read deadline is pushed out each time a chunk arrives (capped by a hard overall deadline), so multi-line `state` responses aren't truncated mid-transmission on hubs with more ports.
 - `ApiProxyTransport` — sends `POST /api/v1/hubs/{hubId}/command` with plain-text body; hub serial is the hub ID passed at construction. Inherits the service's hub scope (local + remote via Cambrionix Connect).
 
-The named constructors `CliClient.via_serial()` and `CliClient.via_http()` select the transport. `SerialTransport.hub_serial()` calls `udevadm info` to read `ID_SERIAL_SHORT`; `ApiProxyTransport.hub_serial()` returns the stored hub ID.
+The named constructors `CliClient.via_serial()` and `CliClient.via_http()` select the transport. `SerialTransport.hub_serial()` looks its own port up in `serial.tools.list_ports.comports()` and returns the USB serial number, normalized by `_normalize_usb_serial()` (see Hub ID below); `ApiProxyTransport.hub_serial()` returns the stored hub ID.
 
 ### JsonRpcClient connection lifecycle
 
@@ -262,7 +275,14 @@ All three backends determine supported modes dynamically from the hub's firmware
 
 ### Hub ID
 
-The hub ID is the USB serial number assigned by the OS (e.g. `DK0F9SOT`), not the firmware `sn` field (which is zeroed on some hubs). `RestApiClient` and `JsonRpcClient` receive it directly from the service. `CliClient` reads it from the OS via `udevadm info` (`ID_SERIAL_SHORT`) for `SerialTransport`, or uses the stored hub ID for `ApiProxyTransport`.
+The hub ID is the USB serial number assigned by the OS (e.g. `DK0F9SOT`), not the firmware `sn` field (which is zeroed on some hubs). `RestApiClient` and `JsonRpcClient` receive it directly from the service. `CliClient` reads it from `list_ports.comports()` (pyserial reads sysfs on Linux and the PnP registry on Windows — no external tools) for `SerialTransport`, or uses the stored hub ID for `ApiProxyTransport`.
+
+Windows' FTDI driver appends the chip's channel letter to the serial number it reports
+per port instance (`FTDIBUS\VID_0403+PID_6015+ABCDEFGHA\0000` → `ABCDEFGHA`), whereas
+Linux reports the bare USB device serial (`ABCDEFGH`). `_normalize_usb_serial()` in
+`hub_backends.py` strips that suffix on Windows for FTDI VIDs, so the same hub yields
+the same `hub_id` on either platform — important because the ID keys `HubController._hubs`
+and must match what the REST service reports for the same hub.
 
 ## Controller
 
