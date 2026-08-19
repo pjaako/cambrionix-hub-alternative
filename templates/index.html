@@ -406,6 +406,27 @@
       transition: color 0.15s;
     }
     .pwr-btn:hover:not(:disabled) { color: var(--text); }
+
+    /* Sits immediately left of the power button, sharing its corner anchoring:
+       10px edge gap + the power button's 28px footprint + 4px between them. */
+    .sync-btn {
+      position: absolute;
+      right: 42px;
+      bottom: 10px;
+      border: none;
+      background: none;
+      padding: 4px;
+      line-height: 0;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+    .sync-btn:hover:not(:disabled) { color: var(--text); }
+    .sync-btn:disabled { cursor: not-allowed; opacity: 0.35; }
+    /* Blue is already the sync colour everywhere else (status text, the pending
+       power pulse), so the button reuses it rather than inventing one. */
+    .sync-btn.is-sync { color: var(--c-sync); }
+
     .pwr-btn:disabled { cursor: not-allowed; opacity: 0.35; }
     .pwr-btn.is-on { color: var(--c-active); }
     .pwr-btn.is-pending {
@@ -495,6 +516,22 @@
               </div>
               <div class="tile-foot">
                 {% if p.faulted %}<span class="tile-error" title="{{ p.error_detail or '' }}">{{ ('E' ~ p.command_error.code) if p.command_error and p.command_error.code else ('FAULT' if p.port_error else 'ERROR') }}</span>{% endif %}
+                {%- set can_sync = has_sync and attached and p.status != 'off' -%}
+                {%- set in_sync = p.status == 'sync' -%}
+                {% if can_sync %}<button type="button" class="sync-btn {{ 'is-sync' if in_sync else '' }}" {{ 'disabled' if p.blocked else '' }}
+                        aria-label="{{ 'Switch to charging' if in_sync else 'Switch to sync' }}" aria-pressed="{{ 'true' if in_sync else 'false' }}"
+                        title="{{ 'Sync mode - click to charge' if in_sync else 'Charge mode - click to sync' }}"
+                        onclick="toggleSync('{{ hub.hub_id }}', {{ p.id }}, '{{ write_mode }}')">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="20" r="2.1" fill="currentColor" stroke="none"/>
+                    <path d="M12 18V6.6"/>
+                    <path d="M12 3.2 15 8.4H9z" fill="currentColor" stroke="none"/>
+                    <path d="M12 14.6 8.4 11"/>
+                    <circle cx="7.2" cy="9.8" r="2.1" fill="currentColor" stroke="none"/>
+                    <path d="M12 16.4 15.9 12.5"/>
+                    <rect x="14.6" y="9.6" width="4" height="4" rx="0.5" fill="currentColor" stroke="none"/>
+                  </svg>
+                </button>{% endif %}
                 <span class="tile-status st-{{ p.status }}">
                   <span class="tile-status-label">{{ p.status }}</span>
                 </span>

@@ -65,6 +65,27 @@ function renderPort(p, hubId, modes) {
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
         </button>`;
 
+    // Sync toggle: only where the hub actually supports the mode, and only on
+    // a live attached port - an off port reports no attachment, and flipping a
+    // detached one has nothing to act on.
+    const canSync = modes.includes('sync') && attached && p.status !== 'off';
+    const inSync = displayedMode === 'sync';
+    const syncToggle = canSync ? `
+        <button type="button" class="sync-btn ${inSync ? 'is-sync' : ''}" ${isPending || blocked ? 'disabled' : ''}
+                aria-label="${inSync ? 'Switch to charging' : 'Switch to sync'}" aria-pressed="${inSync}"
+                title="${inSync ? 'Sync mode - click to charge' : 'Charge mode - click to sync'}"
+                onclick="toggleSync('${hubId}', ${p.id}, '${displayedMode}')">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="20" r="2.1" fill="currentColor" stroke="none"/>
+            <path d="M12 18V6.6"/>
+            <path d="M12 3.2 15 8.4H9z" fill="currentColor" stroke="none"/>
+            <path d="M12 14.6 8.4 11"/>
+            <circle cx="7.2" cy="9.8" r="2.1" fill="currentColor" stroke="none"/>
+            <path d="M12 16.4 15.9 12.5"/>
+            <rect x="14.6" y="9.6" width="4" height="4" rx="0.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>` : '';
+
     const isOff = p.status === 'off';
     const attachIcon = isOff ? '' : `
         <svg class="icon-attach ${attached ? 'is-attached' : ''}" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="${attached ? 'Attached' : 'Detached'}"><title>${attached ? 'Attached' : 'Detached'}</title>
@@ -111,6 +132,7 @@ function renderPort(p, hubId, modes) {
         </div>
         <div class="tile-foot">
           ${errorBadge}
+          ${syncToggle}
           <span class="tile-status st-${p.status}">
             <span class="tile-status-label">${p.status}</span>
           </span>
@@ -213,6 +235,12 @@ async function refresh() {
 
 function togglePort(hubId, portId, currentMode) {
     setMode(hubId, portId, currentMode === 'off' ? 'on' : 'off');
+}
+
+// Flips the data path only. The power button keeps owning on/off, so the two
+// controls never fight over the same transition.
+function toggleSync(hubId, portId, currentMode) {
+    setMode(hubId, portId, currentMode === 'sync' ? 'on' : 'sync');
 }
 
 async function setMode(hubId, portId, mode) {
