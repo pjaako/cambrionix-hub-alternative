@@ -243,6 +243,13 @@
       flex-direction: row;
       gap: 10px;
       padding: 12px 14px 14px;
+      /* A grid row is as tall as its tallest tile, so without a floor a row
+         holding one charging port towers over a row of idle ones, and an empty
+         tile collapses until the corner-pinned power button crowds the port
+         number. This is the height of a fully populated tile (battery + stats +
+         status), which keeps every row identical. It is a floor, not a cap:
+         keep it at least as tall as the fullest layout or rows diverge again. */
+      min-height: 137px;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--surface-2);
@@ -277,6 +284,10 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+      /* Pin the head to the top and the footer to the bottom so the status text
+         and error badge sit on the same line across every tile, next to the
+         power button, instead of floating up in sparse ones. */
+      justify-content: space-between;
     }
 
     /* ── CHARGE BATTERY ── */
