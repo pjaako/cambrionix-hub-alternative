@@ -199,6 +199,29 @@ The `cef` command clears the system error flags.
 **Response**
 `>>`
 
+(Community Note: **`cef` does not clear `UV`.** Verified 2026-08-19 on a U16S, Universal
+firmware 1.83, with the supply restored to 5.33 V — inside the 4.50–5.58 window `limits`
+reports — and the hub otherwise healthy:
+
+- With `5V Flags: UV OV`, a single `cef` cleared **`OV` only**, leaving `UV`.
+- Three further `cef` calls changed nothing. Each returned a clean `>>` with no error, so the
+  firmware accepts the command and silently declines to act on `UV`. It is per-flag
+  behaviour, not one-flag-per-call.
+- While `UV` stands, the port `E` flag stays set and every mode change is refused with
+  `*E422` (see Part 3, §6.1) — so the hub cannot switch any port on.
+
+The likely mechanism is that `UV` is re-derived from the `5V Min` record, which `health`
+reports as a **since-boot running minimum**. It is not the present rail: after the supply was
+raised, `5V Max` tracked upward while `5V Min` stayed pinned at its old floor. Anything that
+clears `UV` gets it re-asserted from that record. (`OV` behaves differently despite `5V Max`
+being equally out of range, so the two flags are evidently not handled consistently.)
+
+**The reset is `reboot`** — a firmware soft reset over the CLI, no power cycle or unplugging
+needed. Verified in the same session: the hub re-enumerated over USB and answered again after
+~6 s, `5V Min`/`5V Max` were reset to live values, `5V Flags` came back empty, the port `E`
+flag was gone and `mode c 1` was accepted. The hub returns with `R` set, which `crf` clears
+and which blocks nothing.)
+
 ### 3.4. cls
 
 The `cls` command clears the terminal screen.

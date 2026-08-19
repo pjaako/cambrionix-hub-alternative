@@ -30,11 +30,11 @@ is confirmed.
 - `*E420: Mode character expected` — returned by `mode` issued with no mode character.
 - `*E422: Refused: an error flag is set` — the hub refuses **all** mode changes while the
   port `E` flag is set, so no port can be switched on until the error is cleared. Run
-  `health` to find the reason (see §3.6). `cef` does **not** clear a latched voltage flag:
-  the flags record events that *occurred* since boot, so a hub that dipped below the `limits`
-  under-voltage threshold stays blocked until it is rebooted or power-cycled, even once the
-  supply is corrected. `crf` clears the separate rebooted flag `R`, which does not block
-  mode changes.
+  `health` to find the reason (see §3.6). `cef` does **not** clear `UV` — verified with the
+  supply restored to healthy, see Part 1, §3.3 — so a hub that dipped below the `limits`
+  under-voltage threshold stays blocked until `reboot` restarts the firmware, even once the
+  supply is corrected. A power cycle is not required. `crf` clears the separate rebooted flag
+  `R`, which does not block mode changes.
 
 Because the manual's list is demonstrably incomplete, parse `*E<nnn>` generically rather
 than matching against known codes.)
