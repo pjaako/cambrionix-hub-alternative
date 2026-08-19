@@ -73,6 +73,42 @@ def api_set_hub_mode(hub_id: str, body: ModeRequest):
     return {"status": "accepted", "hub_id": hub_id, "mode": body.mode}
 
 
+# Simulated faults for checking the error UI without waiting for hardware to
+# fail. Registered only when CAMBRIONIX_DEV_TOOLS is set, so in a normal run the
+# route is absent from the app and from /docs entirely - not merely refused.
+# Deliberately a different variable from CAMBRIONIX_DEBUG: turning on debug
+# logging must never open a mutation endpoint.
+if os.environ.get("CAMBRIONIX_DEV_TOOLS"):
+
+    class InjectErrorRequest(BaseModel):
+        # Which hub, or every known hub when omitted.
+        hub_id: str | None = None
+        # Which port, or hub-wide when omitted.
+        port_id: int | None = None
+        # command   - simulate a refused set_mode (an event, expires on the TTL)
+        # port_flag - simulate the firmware E flag (polled, persists)
+        # health    - simulate hub health flags such as UV/OV/OT
+        # poll      - simulate the hub failing to poll
+        kind: str = "command"
+        code: str | None = "422"
+        message: str = "*E422: Refused: an error flag is set"
+        flags: list[str] = ["UV"]
+        mode: str = "on"
+        clear: bool = False
+
+    logging.getLogger(__name__).warning(
+        "CAMBRIONIX_DEV_TOOLS is set - POST /api/debug/inject-error is exposed"
+    )
+
+    @app.post("/api/debug/inject-error", status_code=202)
+    def api_inject_error(body: InjectErrorRequest):
+        known = {h["hub_id"] for h in hub.get_hubs()}
+        if body.hub_id is not None and body.hub_id not in known:
+            raise HTTPException(status_code=404, detail=f"Hub {body.hub_id!r} not found")
+        hub.inject_error(body.model_dump())
+        return {"status": "accepted", **body.model_dump()}
+
+
 if __name__ == "__main__":
     import uvicorn
     

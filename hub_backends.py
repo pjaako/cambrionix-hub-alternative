@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import socket
 import sys
 import time
@@ -10,7 +11,7 @@ from abc import ABC, abstractmethod
 import httpx
 import serial
 
-from models import Attachment, PortState, Status
+from models import Attachment, HubHealth, PortState, Status
 
 _REST_BASE = "http://localhost:43424/api/v1"
 _RPC_HOST = "127.0.0.1"
@@ -61,6 +62,108 @@ def _hw_to_fc(hw: str) -> str:
 
 logger = logging.getLogger(__name__)
 
+# Firmware error replies look like "*E422: Refused: an error flag is set", and
+# fatal ones like "*FATAL ERROR E123: ...". Matched generically rather than
+# against a table of known codes: both codes we have hit on real hardware (420
+# and 422) are absent from the manual's list, which jumps 410 -> 421 -> 423.
+_CLI_ERROR_RE = re.compile(r"\*(?:FATAL ERROR\s+)?E(\d+)\s*:?\s*(.*)")
+
+# Flags from `health` that mean the hub is in an error state. `R` (rebooted) is
+# deliberately absent: per the CLI reference it does not block mode changes and
+# is cleared with `crf`.
+_HEALTH_ERROR_FLAGS = frozenset({"UV", "OV", "OT", "E"})
+
+
+class CommandRefused(RuntimeError):
+    """The hub answered a command with a *E<nnn> error code.
+
+    Distinct from a transport failure: the link is healthy and the firmware
+    gave a considered answer. Callers use that difference — a refusal is not a
+    reason to tear down and rediscover the hub.
+    """
+
+    def __init__(self, code: str | None, message: str, command: str = ""):
+        self.code = code
+        self.message = message
+        self.command = command
+        super().__init__(message)
+
+
+def _check_cli_reply(reply: str, command: str = "") -> str:
+    """Return `reply`, or raise CommandRefused if any line is an error code."""
+    for line in reply.splitlines():
+        m = _CLI_ERROR_RE.match(line.strip())
+        if m:
+            raise CommandRefused(m.group(1), line.strip(), command)
+    return reply
+
+
+def _check_rest_result(resp, command: str = "") -> None:
+    """Raise CommandRefused when the REST service reports a failed write.
+
+    raise_for_status() only covers the HTTP layer; the service signals an
+    application-level rejection with {"result": false} and HTTP 200.
+    """
+    try:
+        data = resp.json()
+    except ValueError:
+        return
+    if isinstance(data, dict) and data.get("result") is False:
+        raise CommandRefused(None, f"service rejected {command}", command)
+
+
+def _parse_health(raw: str) -> HubHealth:
+    """Parse a `health` reply into HubHealth. Never raises.
+
+    Two formats are known. The CLI reference documents `5V_V1: 5042` (mV) and
+    `Flags: R`; a live Universal hub instead emits `5V Now:   5.30` (volts),
+    `5V Flags: UV` and `Rebooted flag: R`. Only the latter is verified against
+    real hardware, so both are handled and anything unrecognised is skipped.
+    """
+    health = HubHealth()
+    for line in raw.splitlines():
+        line = line.strip()
+        if ":" not in line:
+            continue
+        label, _, value = line.partition(":")
+        label, value = label.strip().lower(), value.strip()
+
+        if health.supply_mv is None:
+            if label == "5v now":            # live format, volts
+                health.supply_mv = _to_mv(value, scale=1000)
+            elif label in ("5v_v1", "5v_v2"):  # documented format, already mV
+                health.supply_mv = _to_mv(value, scale=1)
+
+        if health.temperature_mc is None:
+            # Unverified against hardware: the one live hub read "<0.1", which
+            # parses to nothing. Display-only, so a miss costs nothing.
+            if label == "temp":                      # documented, milli-degrees
+                health.temperature_mc = _to_mv(value, scale=1)
+            elif label.startswith("temperature now"):  # live, degrees
+                health.temperature_mc = _to_mv(value, scale=1000)
+
+        if "flag" in label:
+            for token in value.replace(",", " ").split():
+                token = token.upper()
+                if token == "R":
+                    health.rebooted = True
+                elif token in _HEALTH_ERROR_FLAGS:
+                    if token not in health.error_flags:
+                        health.error_flags.append(token)
+                else:
+                    # Unknown token: ignore rather than redden the UI. The live
+                    # format is only partly verified and a false alarm is worse
+                    # than a missed one.
+                    logger.debug("unrecognised health flag %r in %r", token, line)
+    return health
+
+
+def _to_mv(value: str, scale: int) -> int | None:
+    try:
+        return round(float(value) * scale)
+    except (ValueError, TypeError):
+        return None
+
 
 class HubClient(ABC):
     @property
@@ -80,6 +183,11 @@ class HubClient(ABC):
     def set_mode(self, port_id: int | None, mode: str) -> None:
         """port_id=None applies the mode to every port on the hub."""
         ...
+
+    def health(self) -> HubHealth:
+        """Last known hub-wide health. Backends that can't probe it return an
+        empty (healthy) reading, so callers never need to feature-detect."""
+        return HubHealth()
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +283,7 @@ class RestApiClient(HubClient):
             resp = self._client.post(url, json={"mode": mode})
             logger.debug("REST POST %s (mode=%s, all ports) -> %s", url, mode, resp.text)
             resp.raise_for_status()
+            _check_rest_result(resp, f"mode {mode} (all ports)")
             return
         # REST API bug (confirmed ≥4.0.0, still present in 4.0.1): POST mode "on"
         # returns success but port stays off. Always use firmware CLI for "on".
@@ -187,6 +296,9 @@ class RestApiClient(HubClient):
             )
             logger.debug("REST POST %s (mode c %d) -> %s", url, port_id, resp.text)
             resp.raise_for_status()
+            # The /command proxy returns HTTP 200 even when the firmware refused,
+            # putting the *E<nnn> in the response body.
+            _check_cli_reply(resp.text, f"mode c {port_id}")
             return
         url = f"{self._base}/hubs/{hub}/ports/{port_id}/mode"
         resp = self._client.post(
@@ -195,6 +307,7 @@ class RestApiClient(HubClient):
         )
         logger.debug("REST POST %s (mode=%s) -> %s", url, mode, resp.text)
         resp.raise_for_status()
+        _check_rest_result(resp, f"mode {mode} on port {port_id}")
 
     def _parse(self, raw: dict, energy_mwh: int = 0) -> PortState:
         state = raw.get("state", {})
@@ -286,7 +399,7 @@ class JsonRpcClient(HubClient):
             self._sock = None
             self._handle = None
 
-    def _rpc(self, method: str, params=None):
+    def _rpc(self, method: str, params=None, strict: bool = False):
         self._req_id += 1
         req: dict = {"jsonrpc": "2.0", "id": self._req_id, "method": method}
         if params is not None:
@@ -302,6 +415,11 @@ class JsonRpcClient(HubClient):
             try:
                 resp = json.loads(buf.decode())
                 if "error" in resp:
+                    if strict:
+                        err = resp["error"] or {}
+                        raise CommandRefused(
+                            str(err.get("code")), err.get("message") or "RPC error", method
+                        )
                     return None
                 return resp.get("result")
             except json.JSONDecodeError:
@@ -394,7 +512,15 @@ class JsonRpcClient(HubClient):
     def set_mode(self, port_id: int | None, mode: str) -> None:
         self._connect()
         key = "mode" if port_id is None else f"Port.{port_id}.Mode"
-        self._rpc("cbrx_connection_set", [self._handle, key, _MODE_TO_CLI.get(mode, mode)])
+        # strict: a write that the hub rejects must not look like a success.
+        # Residual gap: a cbrx_connection_set that returns a falsy result with no
+        # JSON-RPC "error" member still slips through. Not fixable without an
+        # older service to characterise it against.
+        self._rpc(
+            "cbrx_connection_set",
+            [self._handle, key, _MODE_TO_CLI.get(mode, mode)],
+            strict=True,
+        )
 
     def _parse_ports_info(self, info: dict, extras: dict = {}) -> PortState:
         flag_tokens = info.get("Flags", "").split()
@@ -409,6 +535,7 @@ class JsonRpcClient(HubClient):
             attachment = Attachment.DETACHED if "D" in flags else Attachment.ATTACHED
             status = _universal_status(flags)
         return PortState(
+            error_flag="E" in flags,
             id=info["Port"],
             attachment=attachment,
             status=status,
@@ -600,6 +727,7 @@ class CliClient(HubClient):
         self._hub_serial = hub_serial
         self._fc: str | None = None
         self._modes: list[str] | None = None
+        self._last_health = HubHealth()
 
     @property
     def hub_id(self) -> str:
@@ -610,8 +738,16 @@ class CliClient(HubClient):
     def close(self) -> None:
         self._transport.close()
 
+    def _send(self, cmd: str) -> str:
+        """Send a command and raise CommandRefused if the hub answered *E<nnn>.
+
+        The firmware reports refusals in-band, so a caller that ignores the reply
+        cannot tell a rejected command from an applied one.
+        """
+        return _check_cli_reply(self._transport.send_command(cmd), cmd)
+
     def _parse_id(self) -> None:
-        raw = self._transport.send_command("id")
+        raw = self._send("id")
         info: dict[str, str] = {}
         for line in raw.splitlines():
             if "mfr:" in line:
@@ -635,8 +771,12 @@ class CliClient(HubClient):
 
     def get_ports(self) -> list[PortState]:
         self.hub_id  # ensure self._fc is populated
-        supply_mv = self._supply_voltage_mv() if self._fc == "un" else None
-        raw = self._transport.send_command("state")
+        self._last_health = self._probe_health()
+        # Universal hubs have no per-port voltage column and take it from the
+        # shared rail; every other class reports it per port in `state`, so
+        # passing None here keeps health from overwriting the real reading.
+        supply_mv = self._last_health.supply_mv if self._fc == "un" else None
+        raw = self._send("state")
         ports = []
         for line in raw.splitlines():
             line = line.strip()
@@ -656,8 +796,9 @@ class CliClient(HubClient):
 
     def get_port(self, port_id: int) -> PortState:
         self.hub_id  # ensure self._fc is populated
-        supply_mv = self._supply_voltage_mv() if self._fc == "un" else None
-        raw = self._transport.send_command(f"state {port_id}")
+        self._last_health = self._probe_health()
+        supply_mv = self._last_health.supply_mv if self._fc == "un" else None
+        raw = self._send(f"state {port_id}")
         for line in raw.splitlines():
             parts = [p.strip() for p in line.strip().split(",")]
             if len(parts) >= 3:
@@ -671,28 +812,25 @@ class CliClient(HubClient):
     def set_mode(self, port_id: int | None, mode: str) -> None:
         cli_mode = _MODE_TO_CLI.get(mode, mode)
         cmd = f"mode {cli_mode}" if port_id is None else f"mode {cli_mode} {port_id}"
-        self._transport.send_command(cmd)
+        self._send(cmd)
 
-    def _supply_voltage_mv(self) -> int | None:
-        # Universal firmware doesn't report per-port voltage in `state` (all ports
-        # on these USB2 hubs are paralleled onto one supply rail anyway), but `health`
-        # reports the shared rail. Observed live-hub format is "5V Now:   5.13" (volts);
-        # the CLI reference docs (docs/cambrionix-cli-reference) instead show "5V_V1: 5042"
-        # (mV) — handle both since we've only verified one hub against real hardware.
-        raw = self._transport.send_command("health")
-        for line in raw.splitlines():
-            line = line.strip()
-            if line.lower().startswith("5v now"):
-                try:
-                    return round(float(line.split(":", 1)[1].strip()) * 1000)
-                except (ValueError, IndexError):
-                    return None
-            if line.startswith("5V_V1"):
-                try:
-                    return int(line.split(":", 1)[1].strip())
-                except (ValueError, IndexError):
-                    return None
-        return None
+    def _probe_health(self) -> HubHealth:
+        """Run `health` on any firmware class and parse the result.
+
+        A firmware-level refusal is not a hub failure — a product without the
+        `health` command answers *E400, which just means "no reading available".
+        Transport errors still propagate, since those mean the hub is gone.
+        """
+        try:
+            raw = _check_cli_reply(self._transport.send_command("health"), "health")
+        except CommandRefused as e:
+            logger.debug("health unavailable on %s: %s", self._hub_serial, e.message)
+            return HubHealth()
+        return _parse_health(raw)
+
+    def health(self) -> HubHealth:
+        """Health from the most recent get_ports()/get_port() call."""
+        return self._last_health
 
     def _parse_state_line(self, parts: list[str], supply_mv: int | None = None) -> PortState:
         # PDSync: port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x
@@ -727,10 +865,15 @@ class CliClient(HubClient):
         if self._fc == "un":
             attachment = Attachment.DETACHED if "D" in flags else Attachment.ATTACHED
             status = _universal_status(flags)
+            error_flag = "E" in flags
         else:
             # PDSync / TS3-C10: flag_tokens are positional (Attachment, Status, QC)
             attachment = _ATTACHMENT_MAP.get(flag_tokens[0], Attachment.UNKNOWN) if flag_tokens else Attachment.UNKNOWN
             status = _STATUS_MAP.get(flag_tokens[1], Status.UNKNOWN) if len(flag_tokens) > 1 else Status.UNKNOWN
+            # No error column exists in the positional format, so a per-port
+            # error is unknowable here — the hub-wide `health` probe is the
+            # only source on these products.
+            error_flag = False
 
         return PortState(
             id=port_id,
@@ -740,4 +883,5 @@ class CliClient(HubClient):
             current_ma=current_ma or 0,
             charging_seconds=time_sec,
             energy_mwh=energy_mwh,
+            error_flag=error_flag,
         )
