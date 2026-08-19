@@ -16,9 +16,28 @@ Failed commands respond with an error code in the format: `*Ennn: Explanation`
 | **404** | ERR_MISSING_PARAMETER | Mandatory parameter missing |
 | **407** | ERR_UNKNOWN_PROFILE_ID | Invalid profile ID |
 | **410** | ERR_INVALID_PORT_NUMBER | Port number not valid for this product |
+| **420** | *(name not in manual)* | `Mode character expected` — see Community Note below |
 | **421** | ERR_INVALID_MODE_CHAR | Invalid mode character |
+| **422** | *(name not in manual)* | `Refused: an error flag is set` — see Community Note below |
 | **423** | ERR_CONSOLE_MODE_NOT_REMOTE | Remote mode required |
 | **425** | ERR_BAD_LED_PATTERN | Invalid LED pattern |
+
+(Community Note: codes **420** and **422** are absent from the source manual's table — it
+skips 410 → 421 → 423 — but both were observed on real hardware (U16S, Universal firmware
+1.83), verified 2026-08-19. Their official `ERR_` names are unknown; only the response text
+is confirmed.
+
+- `*E420: Mode character expected` — returned by `mode` issued with no mode character.
+- `*E422: Refused: an error flag is set` — the hub refuses **all** mode changes while the
+  port `E` flag is set, so no port can be switched on until the error is cleared. Run
+  `health` to find the reason (see §3.6). `cef` does **not** clear a latched voltage flag:
+  the flags record events that *occurred* since boot, so a hub that dipped below the `limits`
+  under-voltage threshold stays blocked until it is rebooted or power-cycled, even once the
+  supply is corrected. `crf` clears the separate rebooted flag `R`, which does not block
+  mode changes.
+
+Because the manual's list is demonstrably incomplete, parse `*E<nnn>` generically rather
+than matching against known codes.)
 
 ### 6.2. Fatal Errors
 Fatal errors are reported immediately: `*FATAL ERROR Ennn: Explanation`. 

@@ -249,6 +249,32 @@ Flags: R
 
 (Community Note: on at least one Universal-firmware hub, the actual response uses a different format/labels than shown above — `System up for:`, `5V Now:`, `5V Min:`, `5V Max:`, `5V Flags:`, `Rebooted flag:` — and `5V Now` is in **volts** (e.g. `5.13`), not millivolts. Verified 2026-08-17 against real hardware, PSU-adjustment-confirmed. Treat the field names and units above as unverified for this firmware; parse defensively.)
 
+(Community Note: the manual does not enumerate the values the flag fields can take. The
+table below is **inferred from the v3.9 JSON-RPC documentation**, where the same underlying
+properties are described — see `docs/cambrionix-hub-api-reference-v3.9/02-get-dictionary.md`.
+That source is superseded and has known inaccuracies against current firmware, so treat
+anything not marked verified as provisional.
+
+| Field | Value | Meaning | Status |
+| :--- | :--- | :--- | :--- |
+| voltage flags (`5V Flags:`) | `UV` | Under-voltage occurred | **Verified** 2026-08-19, U16S / Universal fw 1.83 |
+| voltage flags | `OV` | Over-voltage occurred | Not tested |
+| voltage flags | `UV OV` / `OV UV` | Both occurred | Not tested |
+| voltage flags | *(empty)* | Voltage acceptable | **Verified** 2026-08-19 |
+| temperature flags | `OT` | Over-temperature event occurred | Not tested |
+| temperature flags | *(empty)* | Temperature acceptable | **Verified** 2026-08-19 |
+| `Rebooted flag:` | `R` | System rebooted; cleared by `crf` | **Verified** 2026-08-19 |
+
+The wording in the source is "occurred", not "is occurring" — these latch on the event and
+record it for the current boot session. A hub whose supply dipped below the `limits`
+under-voltage threshold keeps `UV` set even after the rail returns to normal, and `cef` does
+not clear it; only a reboot or power cycle resets the record. While set, the port `E` flag is
+raised and every mode change is refused with `*E422` (see Part 3, §6.1).
+
+Also unverified: whether `OT` and `OV` block mode changes the same way `UV` does, and how
+these fields are labelled on PDSync / TS3-C10 firmware — the observations above are from a
+Universal-firmware hub only.)
+
 ### 3.7. host
 
 The `host` command shows if a USB host is present and sets how the hub responds to host detection.
