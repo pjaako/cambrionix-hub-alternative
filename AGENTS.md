@@ -90,6 +90,41 @@ See `bugs/README.md` for the full index. Summary:
 - `GET /api/v1/hubs/{hubId}/ports/{portId}` does not return the `energy` field (`power.charge.charging.energy`) despite it being marked `required` in the OpenAPI schema. Confirmed ≥4.0.0 through 4.0.1; **appears fixed in 4.1.2** (field now present, verified 2026-08-03). Workaround (`RestApiClient._fetch_energies()`, merges energy from a `state` CLI command via the `/command` proxy) is left in place pending more soak time on 4.1.2 — it's a no-op once the native field is populated. Full report: `bugs/bug_report_rest_api_missing_energy_wh.md`.
 - `POST /api/v1/hubs/{hubId}/ports/{portId}/mode` with `{"mode": "on"}` returns `{"result": true}` while the port stays stuck on `"off"`. Confirmed ≥4.0.0 through 4.0.1; **appears fixed in 4.1.2** (two clean off→on round trips verified 2026-08-03, previously 100% reproducible). Workaround (`RestApiClient.set_mode("on")` bypasses the REST endpoint, sends `mode c <portId>` via the firmware CLI `/command` proxy) is left in place pending more soak time. Full report: `bugs/bug_report_rest_api_mode_off_unrecoverable.md`. Reproduction script: `bugs/reproduce_mode_off_bug.py`.
 
+## Pending verification on Linux
+
+Commit `4f3c496` ("Run the CLI serial backend on Windows as well as Linux") was tested
+**only on Windows** — a U16S on Universal firmware 1.83, Python 3.14. It changes code paths
+Linux already depended on, so the items below need confirming on a Linux host with a hub.
+**Delete this section once they pass.**
+
+Setup: stop `CambrionixApiService` first (see README, "Freeing the serial port"), then
+activate the venv.
+
+1. **`hub_id` must be unchanged.** `SerialTransport.hub_serial()` no longer shells out to
+   `udevadm info`; it reads `serial_number` from `serial.tools.list_ports.comports()`.
+   Confirm both agree:
+   ```bash
+   udevadm info --query=property /dev/ttyUSB0 | grep ID_SERIAL_SHORT
+   python -c "from hub_backends import CliClient; print([h.hub_id for h in CliClient.discover_serial()])"
+   ```
+   If pyserial's sysfs read differs from `ID_SERIAL_SHORT`, every hub's ID shifts. IDs key
+   `HubController._hubs` and must match what the REST service reports for the same hub, so a
+   mismatch is a silent breakage, not a cosmetic one.
+2. **No suffix stripped on Linux.** `_normalize_usb_serial()` removes a trailing A–D only
+   when `sys.platform == "win32"` (Windows' FTDI driver appends a channel letter). The Linux
+   ID should come through untouched.
+3. **`CliClient.via_serial()` lost its `/dev/ttyUSB0` default** — the argument is now
+   required. No in-repo caller relied on the default; check any local scripts that might.
+4. **Known edge case, deliberately not fixed:** `udevadm` used to resolve
+   `/dev/serial/by-id/...` symlinks. The `comports()` lookup matches on `info.device`, so a
+   by-id path now finds no match and `hub_id` falls back to the firmware `sn` (zeroed on some
+   hubs). Pass the real `/dev/ttyUSB*` node, or teach the lookup to resolve symlinks.
+5. **End to end:** `python test_api.py backends`, then the web app toggling a port
+   off → on → off.
+
+Unverified on any platform: the `OV` and `OT` health flags, and whether they block mode
+changes the way `UV` does — see `docs/cambrionix-cli-reference/01-introduction-and-commands-a-m.md` §3.6.
+
 ## Running the web app
 
 ```bash
