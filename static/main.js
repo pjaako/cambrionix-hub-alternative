@@ -50,13 +50,18 @@ function renderPort(p, hubId, modes) {
     // sync -> charge and off -> on both land on "on", so whichever button was
     // pressed records itself and is the one that shows the transition.
     const pendingVia = isPending ? pending.via : null;
+    // On/off is the disruptive change - the port really is between states, so
+    // the tile dims and its readings blank. Charge<->sync leaves the port
+    // powered and its readings valid, so it must not disturb the tile or the
+    // power button: the trident alone carries that transition.
+    const powerPending = pendingVia === 'power';
     // Both computed server-side (controller.py) so this and the Jinja template
     // cannot drift. faulted = this port is broken (red); blocked = its control
     // is dead, which a hub-wide fault also causes without reddening the tile.
     const blocked = !!p.blocked;
     const faulted = !!p.faulted;
 
-    const s = isPending ? 'transition'
+    const s = powerPending ? 'transition'
             : p.status === 'off' ? 'off'
             : attached           ? 'active'
             :                      'idle';
@@ -66,7 +71,7 @@ function renderPort(p, hubId, modes) {
         ? 'pwr-btn is-pending'
         : `pwr-btn ${isOn ? 'is-on' : ''}`;
     const toggle = `
-        <button type="button" class="${btnClass}" ${isPending || blocked ? 'disabled' : ''}
+        <button type="button" class="${btnClass}" ${powerPending || blocked ? 'disabled' : ''}
                 aria-label="${isOn ? 'Turn charging off' : 'Turn charging on'}" aria-pressed="${isOn}"
                 onclick="togglePort('${hubId}', ${p.id}, '${displayedMode}')">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
@@ -124,7 +129,7 @@ function renderPort(p, hubId, modes) {
         : '';
 
     // Keep this markup in sync with the port-tile loop in templates/index.html.
-    return `<div class="port-tile s-${s} ${attached ? '' : 'unattached'} ${isPending ? 'pending' : ''} ${faulted ? 'has-error' : ''}">
+    return `<div class="port-tile s-${s} ${attached ? '' : 'unattached'} ${powerPending ? 'pending' : ''} ${faulted ? 'has-error' : ''}">
       ${battery}
       <div class="tile-body">
         <div class="tile-head">
@@ -132,10 +137,10 @@ function renderPort(p, hubId, modes) {
           <span class="tile-port">${String(p.id).padStart(2, '0')}</span>
         </div>
         <div class="tile-stats">
-          <div class="tile-stat-value">${attached && !isPending && p.voltage_mv != null ? p.voltage_mv + ' mV' : ''}</div>
-          <div class="tile-stat-value">${attached && !isPending ? p.current_ma + ' mA' : ''}</div>
-          <div class="tile-stat-value">${attached && !isPending ? p.energy_mwh + ' mWh' : ''}</div>
-          <div class="tile-stat-value">${attached && !isPending ? fmt(p.charging_seconds) : ''}</div>
+          <div class="tile-stat-value">${attached && !powerPending && p.voltage_mv != null ? p.voltage_mv + ' mV' : ''}</div>
+          <div class="tile-stat-value">${attached && !powerPending ? p.current_ma + ' mA' : ''}</div>
+          <div class="tile-stat-value">${attached && !powerPending ? p.energy_mwh + ' mWh' : ''}</div>
+          <div class="tile-stat-value">${attached && !powerPending ? fmt(p.charging_seconds) : ''}</div>
         </div>
         <div class="tile-foot">
           ${errorBadge}
