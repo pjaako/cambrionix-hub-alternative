@@ -448,7 +448,7 @@
           {%- set write_mode = p.status if p.status in ('off', 'sync', 'biased') else 'on' -%}
           {%- set s = 'off' if p.status == 'off' else ('active' if attached else 'idle') -%}
           {%- set is_on = write_mode != 'off' -%}
-          <div class="port-tile s-{{ s }} {{ '' if attached else 'unattached' }} {{ 'has-error' if p.blocked else '' }}">
+          <div class="port-tile s-{{ s }} {{ '' if attached else 'unattached' }} {{ 'has-error' if p.faulted else '' }}">
             {% if p.status != 'off' and attached %}
             <div class="tile-battery st-{{ p.status }}">
               <div class="battery-nub"></div>
@@ -483,7 +483,7 @@
                 </div>
               </div>
               <div class="tile-foot">
-                {% if p.blocked %}<span class="tile-error" title="{{ p.error_detail or '' }}">{{ 'E' ~ p.command_error.code if p.command_error and p.command_error.code else 'ERROR' }}</span>{% endif %}
+                {% if p.faulted %}<span class="tile-error" title="{{ p.error_detail or '' }}">{{ ('E' ~ p.command_error.code) if p.command_error and p.command_error.code else ('FAULT' if p.port_error else 'ERROR') }}</span>{% endif %}
                 <span class="tile-status st-{{ p.status }}">
                   <span class="tile-status-label">{{ p.status }}</span>
                 </span>

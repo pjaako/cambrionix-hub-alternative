@@ -45,9 +45,11 @@ function renderPort(p, hubId, modes) {
     const isPending = pendingPorts.has(key);
     const attached = p.attachment !== 'detached';
     const displayedMode = isPending ? pendingPorts.get(key).mode : writeMode(p.status);
-    // blocked is computed server-side (controller.py) precisely so this and the
-    // Jinja template cannot drift in how they decide what counts as an error.
+    // Both computed server-side (controller.py) so this and the Jinja template
+    // cannot drift. faulted = this port is broken (red); blocked = its control
+    // is dead, which a hub-wide fault also causes without reddening the tile.
     const blocked = !!p.blocked;
+    const faulted = !!p.faulted;
 
     const s = isPending ? 'transition'
             : p.status === 'off' ? 'off'
@@ -84,14 +86,17 @@ function renderPort(p, hubId, modes) {
         </div>
       </div>`;
 
-    const errorBadge = blocked
-        ? `<span class="tile-error" title="${esc(p.error_detail)}">${
-            p.command_error && p.command_error.code ? 'E' + esc(p.command_error.code) : 'ERROR'
-          }</span>`
+    // FAULT distinguishes a dead port (firmware `e`: will not detect or charge)
+    // from a hub-wide condition, which reads ERROR.
+    const badgeLabel = p.command_error && p.command_error.code
+        ? 'E' + esc(p.command_error.code)
+        : p.port_error ? 'FAULT' : 'ERROR';
+    const errorBadge = faulted
+        ? `<span class="tile-error" title="${esc(p.error_detail)}">${badgeLabel}</span>`
         : '';
 
     // Keep this markup in sync with the port-tile loop in templates/index.html.
-    return `<div class="port-tile s-${s} ${attached ? '' : 'unattached'} ${isPending ? 'pending' : ''} ${blocked ? 'has-error' : ''}">
+    return `<div class="port-tile s-${s} ${attached ? '' : 'unattached'} ${isPending ? 'pending' : ''} ${faulted ? 'has-error' : ''}">
       ${battery}
       <div class="tile-body">
         <div class="tile-head">

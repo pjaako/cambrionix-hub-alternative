@@ -85,26 +85,62 @@ class TestCliParsing(unittest.TestCase):
         self.assertEqual(p.voltage_mv, 5150)  # 0515 * 10, not 9990
 
 
-class TestErrorFlag(unittest.TestCase):
-    def test_universal_error_flag_parsed(self):
-        # "E" in the combined Universal flag set means the hub will refuse mode
-        # changes on this port.
-        client, _ = _client("un", _HEALTH_DOC, "1, 0000, E D O, 0, 0, x, 0.00\n>>")
+class TestErrorFlags(unittest.TestCase):
+    """Lowercase `e` is a port fault; uppercase `E` is a hub condition.
+
+    The firmware prints `E` on every port line, but it means "system errors
+    present, check health" — so it belongs to the hub, not to sixteen ports.
+    """
+
+    def test_lowercase_e_is_a_port_fault(self):
+        # Confirmed on hardware: an `e` port will not detect or charge a device.
+        client, _ = _client("un", _HEALTH_DOC, "2, 0000, e D S, 0, 0, x, 0.00\n>>")
         p = client.get_ports()[0]
 
-        self.assertTrue(p.error_flag)
+        self.assertTrue(p.port_error)
         self.assertEqual(p.attachment, "detached")
-        self.assertEqual(p.status, "off")
+        self.assertEqual(p.status, "sync")     # the fault does not mask status
+        self.assertEqual(client.health().error_flags, [])   # nothing hub-wide
 
-    def test_universal_no_error_flag(self):
+    def test_uppercase_E_goes_to_the_hub_not_the_ports(self):
+        client, _ = _client(
+            "un", _HEALTH_DOC,
+            "1, 0000, E D O, 0, 0, x, 0.00\n2, 0000, E D O, 0, 0, x, 0.00\n>>")
+        ports = client.get_ports()
+
+        self.assertFalse(any(p.port_error for p in ports))
+        self.assertEqual(client.health().error_flags, ["E"])   # recorded once
+
+    def test_case_is_significant(self):
+        client, _ = _client("un", _HEALTH_DOC, "1, 0000, e D S, 0, 0, x, 0.00\n>>")
+        client.get_ports()
+        self.assertEqual(client.health().error_flags, [])      # e is not E
+
+    def test_port_fault_on_an_attached_port(self):
+        # Observed live as "e A S": attachment still reports normally even
+        # though the port cannot charge what is attached.
+        client, _ = _client("un", _HEALTH_DOC, "14, 0000, e A S, 0, 0, x, 0.00\n>>")
+        p = client.get_ports()[0]
+
+        self.assertTrue(p.port_error)
+        self.assertEqual(p.attachment, "attached")
+
+    def test_both_flags_at_once(self):
+        client, _ = _client("un", _HEALTH_DOC, "3, 0000, e E D O, 0, 0, x, 0.00\n>>")
+        p = client.get_ports()[0]
+
+        self.assertTrue(p.port_error)
+        self.assertEqual(client.health().error_flags, ["E"])
+
+    def test_no_flags(self):
         client, _ = _client("un", _HEALTH_DOC, "1, 0000, D I, 0, 0, x, 0.00\n>>")
-        self.assertFalse(client.get_ports()[0].error_flag)
+        self.assertFalse(client.get_ports()[0].port_error)
 
-    def test_pdsync_never_reports_error_flag(self):
-        # The positional format has no error column at all, so a "C" in the
-        # status position must not be mistaken for one.
+    def test_pdsync_never_reports_a_port_fault(self):
+        # The positional format has no error column, so a "C" in the status
+        # position must not be mistaken for one.
         client, _ = _client("ps", _HEALTH_DOC, "1, 0515, 2051, A C -, 3383, x, 9.92\n>>")
-        self.assertFalse(client.get_ports()[0].error_flag)
+        self.assertFalse(client.get_ports()[0].port_error)
 
 
 class TestCommandRefusal(unittest.TestCase):
@@ -187,7 +223,8 @@ class TestHealthProbe(unittest.TestCase):
     def test_health_exposed_after_poll(self):
         client, _ = _client("un", _HEALTH_LIVE, "1, 0000, E D O, 0, 0, x, 0.00\n>>")
         client.get_ports()
-        self.assertEqual(client.health().error_flags, ["UV"])
+        # UV from health, E from the state output — both hub-level.
+        self.assertEqual(sorted(client.health().error_flags), ["E", "UV"])
 
 
 if __name__ == "__main__":

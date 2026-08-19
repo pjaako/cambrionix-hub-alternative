@@ -24,8 +24,8 @@ _HEALTH_FLAG_TEXT = {
     "OT": "over-temperature recorded (OT)",
     "E": "error flag set (E)",
 }
-_LATCHED_HINT = ("The firmware refuses mode changes while this is set, and it "
-                 "latches until the hub is power-cycled.")
+_LATCHED_HINT = ("The firmware refuses mode changes while this is set. UV latches "
+                 "until a firmware `reboot`; `cef` does not clear it.")
 
 
 def _hub_error_detail(poll_error, health_flags, command_error) -> str | None:
@@ -40,13 +40,18 @@ def _hub_error_detail(poll_error, health_flags, command_error) -> str | None:
     return None
 
 
-def _port_error_detail(command_error, error_flag, hub_detail) -> str | None:
-    """One human-readable line for a port tile."""
+def _port_error_detail(command_error, port_error) -> str | None:
+    """One line for a port tile, describing THIS port only.
+
+    Hub-wide causes deliberately do not appear here - they belong on the hub
+    header, and repeating them on every tile would drown out a real port fault.
+    """
     if command_error:
         return command_error["message"]
-    if error_flag:
-        return "Firmware error flag (E) set - the hub refuses mode changes on this port."
-    return hub_detail
+    if port_error:
+        return ("Port fault (e) - this port will not detect or charge an attached "
+                "device. Not cleared by cef, a mode change or a port power cycle.")
+    return None
 
 
 def _close_all(hubs: list) -> None:
@@ -228,21 +233,23 @@ class HubController:
             ports = []
             for raw_port in hub["ports"]:
                 port = dict(raw_port)  # never mutate the raw poll output
-                if port["id"] in injected.get("port_flags", ()):
-                    port["error_flag"] = True
-                port_error = self._command_errors.get((hub_id, port["id"]))
-                port_error = asdict(port_error) if port_error else None
-                port["command_error"] = port_error
+                if port["id"] in injected.get("port_faults", ()):
+                    port["port_error"] = True
+                cmd_error = self._command_errors.get((hub_id, port["id"]))
+                cmd_error = asdict(cmd_error) if cmd_error else None
+                port["command_error"] = cmd_error
                 # One concept: a tile is red exactly when its controls are
                 # dead. A refused command counts - whatever caused the refusal
                 # will almost certainly refuse the retry too. The TTL re-enables
                 # the button after 30s so a retry is never permanently barred.
-                port["blocked"] = (
-                    bool(port_error) or bool(port.get("error_flag")) or hub_blocked
-                )
-                port["error_detail"] = _port_error_detail(
-                    port_error, port.get("error_flag"), hub_detail if hub_blocked else None
-                )
+                # faulted drives the red tile and is about THIS port only. A
+                # hub-wide fault reddens the hub header instead of painting
+                # every tile, which would hide an actually broken port.
+                port["faulted"] = bool(cmd_error) or bool(port.get("port_error"))
+                # blocked drives the disabled control. A blocked hub cannot
+                # service any of its ports, so it disables them all.
+                port["blocked"] = port["faulted"] or hub_blocked
+                port["error_detail"] = _port_error_detail(cmd_error, port.get("port_error"))
                 ports.append(port)
 
             view.append({
@@ -331,7 +338,8 @@ class HubController:
         ]
         for hub_id in targets:
             slot = self._injected.setdefault(
-                hub_id, {"port_flags": set(), "health_flags": [], "poll_error": None}
+                hub_id,
+                {"port_faults": set(), "health_flags": [], "poll_error": None},
             )
             if payload.get("clear"):
                 self._injected.pop(hub_id, None)
@@ -346,12 +354,14 @@ class HubController:
                     message=payload.get("message") or "injected error",
                     command="(injected)", mode=payload.get("mode", "on"),
                     port_id=payload.get("port_id"), at=time.time()))
-            elif kind == "port_flag":
+            elif kind == "port_fault":
+                # The per-port `e` flag. The hub-wide `E` is injected with
+                # kind="health", flags=["E"], since that is where it lives.
                 if payload.get("port_id") is None:
-                    slot["port_flags"] = {p["id"] for h in self._raw_state
-                                          if h["hub_id"] == hub_id for p in h["ports"]}
+                    slot["port_faults"] = {p["id"] for h in self._raw_state
+                                           if h["hub_id"] == hub_id for p in h["ports"]}
                 else:
-                    slot["port_flags"].add(payload["port_id"])
+                    slot["port_faults"].add(payload["port_id"])
             elif kind == "health":
                 slot["health_flags"] = list(payload.get("flags") or ["UV"])
             elif kind == "poll":

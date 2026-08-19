@@ -32,11 +32,11 @@ class PortState:
     current_ma: int
     charging_seconds: int | None
     energy_mwh: int = 0
-    # Firmware `E` flag from the `state` command: errors are present and the hub
-    # will refuse mode changes on this port. Universal firmware only — PDSync and
-    # TS3-C10 return positional flag columns with no error column, so they leave
-    # this False and the hub-wide `health` probe is the only source there.
-    error_flag: bool = False
+    # Firmware `e` flag: a fault on this port alone. Undocumented in either
+    # manual, but confirmed on real hardware: an `e` port silently fails to
+    # detect or charge an attached device, while still accepting mode commands
+    # normally. Sticky — survives `cef`, mode changes and a port power cycle.
+    port_error: bool = False
 
 
 @dataclass
@@ -47,6 +47,9 @@ class HubHealth:
     per-port voltage on Universal hubs — PDSync/TS3-C10 report voltage per port
     in the `state` command itself.
     """
+    # Note the uppercase `E` flag lives here rather than on PortState. The
+    # firmware prints it on every port line, but it means "system errors are
+    # present, check health" - a hub-wide condition, not sixteen port faults.
     supply_mv: int | None = None
     temperature_mc: int | None = None
     # Raised error flags, a subset of UV / OV / OT / E. Empty means healthy.
@@ -61,7 +64,8 @@ class CommandError:
     """A command the hub refused, or that failed in transport.
 
     An *event*, not polled state: it records that one command failed at one
-    moment. Polled conditions (PortState.error_flag, HubHealth.error_flags) are
+    moment. Polled conditions (PortState.system_error/port_error,
+    HubHealth.error_flags) are
     re-derived from hardware every cycle and live there instead.
     """
     kind: str            # "refused" (firmware *E<nnn>) | "transport" | "injected"

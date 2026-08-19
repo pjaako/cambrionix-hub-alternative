@@ -278,12 +278,21 @@ Column 3 (Quick Charge, not currently exposed on `PortState`): `-`/`_` disallowe
 Universal firmware (`fc` `un`) instead reports a single combined flag set (order doesn't
 matter, letters are mutually exclusive per firmware docs): `A`/`D` (attachment) plus one
 of `O`/`S`/`B`/`I`/`P`/`C`/`F` (status: off/sync/biased/idle/profiling/charging/finished).
-`E`/`R`/`T`/`r` (error/rebooted/theft/vbus-reset) may also appear. **`E` is surfaced** as
-`PortState.error_flag` — it means the hub will refuse mode changes on that port
-(`*E422: Refused: an error flag is set`), so the UI blocks its controls. `R`/`T`/`r` are
-still not surfaced; `R` in particular is deliberately *not* treated as an error, since it
-does not block anything and `crf` clears it. PDSync/TS3-C10 have no error column at all, so
-`error_flag` is always `False` there and the hub-wide `health` probe is the only source.
+`E`/`R`/`T`/`r` (error/rebooted/theft/vbus-reset) may also appear, plus an undocumented
+lowercase `e`. Two of them are surfaced, and **they are deliberately kept apart**:
+
+| Flag | Scope | Surfaced as | Effect |
+|---|---|---|---|
+| `E` | **Hub** — printed on every port line, but means "system errors present, check `health`" | `HubHealth.error_flags`, alongside `UV`/`OV`/`OT` | Hub refuses all mode changes with `*E422`; hub header goes red and every control is disabled |
+| `e` | **Port** — undocumented, see `docs/cambrionix-cli-reference` | `PortState.port_error` | That port will not detect or charge a device, though it still accepts mode commands. Only that tile goes red |
+
+`E` is folded into the health reading by `CliClient._note_system_error()` rather than stored
+per port. Putting it on `PortState` would mean sixteen "port errors" for one hub condition,
+which would then paint every tile red and hide a genuinely broken port among them.
+
+`R`/`T`/`r` are not surfaced; `R` in particular is deliberately *not* an error, since it
+blocks nothing and `crf` clears it. PDSync/TS3-C10 have no error column at all, so
+`port_error` is always `False` there and `health` is the only source.
 
 Full reference: `docs/cambrionix-cli-reference/02-commands-n-z-and-deprecated.md:66-112`.
 
@@ -360,7 +369,14 @@ A refused command only ever *explains a click*; the reason it was refused is pol
 
 `_refresh_cache_view()` is the single decoration point, called by `_poll()` **and** by the command handlers so a refusal appears immediately rather than up to 2 s later. It computes, per port, `command_error` / `blocked` / `error_detail`, and per hub `blocked` / `error_detail` / `stale`. Both renderers (the Jinja SSR loop and `renderPort()` in `main.js`) consume `blocked` and `error_detail` rather than deciding for themselves what counts as an error — that is what keeps them from drifting.
 
-`blocked` and "red" are deliberately one concept: a tile is red exactly when its controls are dead. A refused command counts, because whatever refused it will almost certainly refuse the retry; the 30 s TTL re-enables the button so a retry is never permanently barred. The client-side pending timeout in `main.js` (`PENDING_TTL_MS`, 10 s) must stay **below** that TTL, or a tile could return to normal while its explanation is still on screen.
+Red and disabled are **two** concepts, per port:
+
+- `faulted` — this port's own problem: a refused command, or the firmware `e` flag. Drives the red tile and the badge.
+- `blocked` — its control is dead. `faulted` implies it, and so does a hub-wide fault.
+
+So a hub error disables all sixteen controls but reddens only the hub header. Painting every tile red would hide the one port that is actually broken — which is exactly the case this hub produces, with five real `e` faults sitting under an otherwise healthy hub.
+
+A refused command counts as `faulted` because whatever refused it will almost certainly refuse the retry; the 30 s TTL re-enables the button so a retry is never permanently barred. The client-side pending timeout in `main.js` (`PENDING_TTL_MS`, 10 s) must stay **below** that TTL, or a tile could return to normal while its explanation is still on screen.
 
 A refused `set_mode_all` is recorded under `(hub_id, None)` and paints the hub header only — sixteen red tiles from one click is noise.
 
@@ -377,13 +393,13 @@ The FastAPI app (`app.py`) exposes:
 - `POST /api/hubs/{hub_id}/ports/mode` (202) — body `{"mode": "..."}`, validates against cached modes, enqueues a hub-wide `set_mode_all` (every port on the hub)
 - `POST /api/debug/inject-error` (202) — **dev only**, see below
 
-Each hub in `GET /api/hubs` carries `health` (`supply_mv`, `temperature_mc`, `error_flags`, `rebooted`), `stale`, `command_error`, `blocked` and `error_detail`; each port carries `error_flag`, `command_error`, `blocked` and `error_detail`. All additive — nothing was removed.
+Each hub in `GET /api/hubs` carries `health` (`supply_mv`, `temperature_mc`, `error_flags`, `rebooted`), `stale`, `command_error`, `blocked` and `error_detail`; each port carries `port_error`, `command_error`, `faulted`, `blocked` and `error_detail`. All additive — nothing was removed.
 
 ### Injecting errors (dev only)
 
 `POST /api/debug/inject-error` is registered **only** when `CAMBRIONIX_DEV_TOOLS` is set, so in a normal run it is absent from the app and from `/docs` — not merely refused. It is a separate variable from `CAMBRIONIX_DEBUG` on purpose: turning on debug logging must never open a mutation endpoint.
 
-Body: `{hub_id?, port_id?, kind, code?, message?, flags?, clear?}` where `kind` is one of `command` (a refused set_mode — expires on the TTL), `port_flag` (the firmware `E` flag — polled, persists), `health` (hub flags such as `UV`), or `poll` (the hub failing to poll). `{"clear": true}` removes everything injected for that hub.
+Body: `{hub_id?, port_id?, kind, code?, message?, flags?, clear?}` where `kind` is one of `command` (a refused set_mode — expires on the TTL), `port_fault` (the per-port `e` flag — polled, persists), `health` (hub flags: `UV`/`OV`/`OT`, or `E` for the hub-wide firmware error), or `poll` (the hub failing to poll). `{"clear": true}` removes everything injected for that hub.
 
 Injected faults go through the same `_refresh_cache_view()` decoration as real ones, so what you see is what a genuine failure looks like — not a parallel rendering path that could diverge.
 

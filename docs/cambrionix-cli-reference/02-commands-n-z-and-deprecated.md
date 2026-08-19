@@ -79,6 +79,27 @@ Displays the current status of each port, including mode, current, flags, and ch
 | **E** | ERRORs present (Check `health`) | - |
 | **R** | System REBOOTED recently | - |
 | **r** | VBUS being reset during mode change | - |
+| **e** | *(not in the manual)* Per-port fault - see Community Note below | - |
+
+(Community Note: lowercase **`e`** appears in the flag field but is absent from the manual
+and from the v3.9 JSON-RPC dictionary, both of which list only the thirteen flags above.
+Observed on a U16S, Universal firmware 1.83, verified 2026-08-19.
+
+- It is **per-port**: seen on 6 of 16 ports while the hub's own `health` was completely
+  clean, so it is not a spelling of the hub-wide `E`. Case is significant - the v3.9 docs
+  state the flag list is case-sensitive.
+- **A port carrying `e` will not detect or charge an attached device**, even though it
+  reports attachment normally (observed as `e A S`) and accepts mode commands without
+  complaint. Unlike `E`, it does **not** cause `*E422` - the command is accepted, it simply
+  achieves nothing.
+- It survives `cef`, a mode change, and a port power cycle (`mode o` then back). One port
+  was later seen to clear it after its attached device was removed, so it is not permanent;
+  what exactly clears it is not established.
+- Position matters: `e` occupies the same leading field as `E`, `R` and `T`, before
+  attachment and status - e.g. `2, 0000, e D S, 0, 0, x, 0.00`.
+
+Because `E` is hub-wide and `e` is per-port, treat them as two different signals rather than
+one flag in two cases.)
 
 **Flags (PDSync and TS3-C10)**
 3 columns of flags are returned.

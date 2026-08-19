@@ -535,7 +535,7 @@ class JsonRpcClient(HubClient):
             attachment = Attachment.DETACHED if "D" in flags else Attachment.ATTACHED
             status = _universal_status(flags)
         return PortState(
-            error_flag="E" in flags,
+            port_error="e" in flags,
             id=info["Port"],
             attachment=attachment,
             status=status,
@@ -791,6 +791,10 @@ class CliClient(HubClient):
                 continue
             if port_id == 0:
                 continue
+            if len(parts) > self.flags_index and "E" in parts[self.flags_index].split():
+                # Hub-wide: the firmware repeats it on every port line, but it
+                # means "system errors present, check health".
+                self._note_system_error()
             ports.append(self._parse_state_line(parts, supply_mv))
         return sorted(ports, key=lambda p: p.id)
 
@@ -804,6 +808,8 @@ class CliClient(HubClient):
             if len(parts) >= 3:
                 try:
                     if int(parts[0]) == port_id:
+                        if len(parts) > self.flags_index and "E" in parts[self.flags_index].split():
+                            self._note_system_error()
                         return self._parse_state_line(parts, supply_mv)
                 except ValueError:
                     continue
@@ -831,6 +837,20 @@ class CliClient(HubClient):
     def health(self) -> HubHealth:
         """Health from the most recent get_ports()/get_port() call."""
         return self._last_health
+
+    @property
+    def flags_index(self) -> int:
+        """Column index of the flags field in a `state` row, by firmware class."""
+        return 2 if self._fc == "un" else 3
+
+    def _note_system_error(self) -> None:
+        """Record the hub-wide `E` flag seen in `state` onto the health reading.
+
+        It belongs with UV/OV/OT rather than on PortState: one condition for the
+        hub, not a fault repeated across every port.
+        """
+        if "E" not in self._last_health.error_flags:
+            self._last_health.error_flags.append("E")
 
     def _parse_state_line(self, parts: list[str], supply_mv: int | None = None) -> PortState:
         # PDSync: port, voltage_10mV, current_mA, flags, time_s, time_charged_or_x, energy_Wh_or_x
@@ -865,15 +885,15 @@ class CliClient(HubClient):
         if self._fc == "un":
             attachment = Attachment.DETACHED if "D" in flags else Attachment.ATTACHED
             status = _universal_status(flags)
-            error_flag = "E" in flags
+            port_error = "e" in flags
         else:
             # PDSync / TS3-C10: flag_tokens are positional (Attachment, Status, QC)
             attachment = _ATTACHMENT_MAP.get(flag_tokens[0], Attachment.UNKNOWN) if flag_tokens else Attachment.UNKNOWN
             status = _STATUS_MAP.get(flag_tokens[1], Status.UNKNOWN) if len(flag_tokens) > 1 else Status.UNKNOWN
-            # No error column exists in the positional format, so a per-port
-            # error is unknowable here — the hub-wide `health` probe is the
-            # only source on these products.
-            error_flag = False
+            # No error column exists in the positional format, so a port fault
+            # is unknowable here — the hub-wide `health` probe is the only
+            # source on these products.
+            port_error = False
 
         return PortState(
             id=port_id,
@@ -883,5 +903,5 @@ class CliClient(HubClient):
             current_ma=current_ma or 0,
             charging_seconds=time_sec,
             energy_mwh=energy_mwh,
-            error_flag=error_flag,
+            port_error=port_error,
         )

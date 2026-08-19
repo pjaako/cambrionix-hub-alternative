@@ -16,7 +16,7 @@ class FakeHub:
         self.health_result = HubHealth(supply_mv=5000)
         self.poll_error = None      # set to an Exception to make get_ports raise
         self.set_mode_error = None  # set to an Exception to make set_mode raise
-        self.error_ports = set()    # port ids that report the firmware E flag
+        self.fault_ports = set()    # port ids reporting the per-port `e` flag
         self.calls = []
 
     def supported_modes(self):
@@ -28,7 +28,7 @@ class FakeHub:
         return [
             PortState(id=i, attachment="detached", status="off", voltage_mv=5000,
                       current_ma=0, charging_seconds=0, energy_mwh=0,
-                      error_flag=i in self.error_ports)
+                      port_error=i in self.fault_ports)
             for i in range(1, self._n + 1)
         ]
 
@@ -66,6 +66,7 @@ class TestCommandErrors(unittest.TestCase):
         p = port(c, 1)
         self.assertEqual(p["command_error"]["code"], "422")
         self.assertEqual(p["command_error"]["kind"], "refused")
+        self.assertTrue(p["faulted"])
         self.assertTrue(p["blocked"])
         self.assertIn("error flag is set", p["error_detail"])
 
@@ -125,6 +126,7 @@ class TestCommandErrors(unittest.TestCase):
         self.assertTrue(h["blocked"])
         self.assertEqual(h["command_error"]["code"], "422")
         self.assertTrue(all(p["command_error"] is None for p in h["ports"]))
+        self.assertFalse(any(p["faulted"] for p in h["ports"]))
 
     def test_hub_wide_success_clears_port_errors(self):
         c, hub = make_controller()
@@ -146,17 +148,29 @@ class TestCommandErrors(unittest.TestCase):
 
 
 class TestPolledConditions(unittest.TestCase):
-    def test_port_error_flag_blocks_that_port_only(self):
+    """Port faults and hub faults are deliberately kept apart.
+
+    `faulted` reddens a tile and is about that port alone; `blocked` disables a
+    control and is also set by a hub-wide condition. Smearing a hub fault across
+    every tile would hide a genuinely broken port among fifteen healthy ones.
+    """
+
+    def test_port_fault_reddens_only_its_own_tile(self):
         c, hub = make_controller()
-        hub.error_ports = {2}
+        hub.fault_ports = {2, 4}
         c._poll()
 
-        self.assertTrue(port(c, 2)["blocked"])
-        self.assertIn("error flag (E)", port(c, 2)["error_detail"])
+        for pid in (2, 4):
+            self.assertTrue(port(c, pid)["faulted"])
+            self.assertTrue(port(c, pid)["blocked"])
+            self.assertIn("will not detect or charge", port(c, pid)["error_detail"])
+        self.assertFalse(port(c, 1)["faulted"])
         self.assertFalse(port(c, 1)["blocked"])
+        # a broken port says nothing about the hub
         self.assertFalse(c.get_hubs()[0]["blocked"])
+        self.assertIsNone(c.get_hubs()[0]["error_detail"])
 
-    def test_health_flag_blocks_the_whole_hub(self):
+    def test_hub_error_disables_ports_without_reddening_them(self):
         c, hub = make_controller()
         hub.health_result = HubHealth(supply_mv=5000, error_flags=["UV"])
         c._poll()
@@ -164,7 +178,32 @@ class TestPolledConditions(unittest.TestCase):
         h = c.get_hubs()[0]
         self.assertTrue(h["blocked"])
         self.assertIn("under-voltage", h["error_detail"])
-        self.assertTrue(all(p["blocked"] for p in h["ports"]))
+        self.assertTrue(all(p["blocked"] for p in h["ports"]))     # controls dead
+        self.assertFalse(any(p["faulted"] for p in h["ports"]))    # but not red
+        self.assertTrue(all(p["error_detail"] is None for p in h["ports"]))
+
+    def test_system_error_flag_is_a_hub_condition(self):
+        # Uppercase E arrives via health (the backend folds it in from `state`),
+        # never as a per-port field.
+        c, hub = make_controller()
+        hub.health_result = HubHealth(supply_mv=5000, error_flags=["E"])
+        c._poll()
+
+        h = c.get_hubs()[0]
+        self.assertTrue(h["blocked"])
+        self.assertIn("error flag set (E)", h["error_detail"])
+        self.assertFalse(any(p["faulted"] for p in h["ports"]))
+
+    def test_a_real_port_fault_stays_visible_under_a_hub_error(self):
+        c, hub = make_controller()
+        hub.fault_ports = {3}
+        hub.health_result = HubHealth(supply_mv=5000, error_flags=["UV"])
+        c._poll()
+
+        self.assertTrue(c.get_hubs()[0]["blocked"])
+        self.assertTrue(port(c, 3)["faulted"])      # still stands out
+        self.assertFalse(port(c, 1)["faulted"])
+        self.assertIn("will not detect or charge", port(c, 3)["error_detail"])
 
     def test_rebooted_flag_is_not_an_error(self):
         c, hub = make_controller()
@@ -186,6 +225,7 @@ class TestPolledConditions(unittest.TestCase):
         self.assertTrue(h["blocked"])
         self.assertIn("hub disappeared", h["error_detail"])
         self.assertTrue(all(p["blocked"] for p in h["ports"]))
+        self.assertFalse(any(p["faulted"] for p in h["ports"]))
 
     def test_recovery_clears_everything(self):
         c, hub = make_controller()
@@ -218,17 +258,19 @@ class TestInjection(unittest.TestCase):
 
         p = port(c, 1)
         self.assertEqual(p["command_error"]["code"], "422")
-        self.assertTrue(p["blocked"])
+        self.assertTrue(p["faulted"])
 
-    def test_injected_port_flag_survives_a_poll(self):
+    def test_injected_port_fault_survives_a_poll(self):
         # Unlike a command error, a simulated polled condition must persist.
         c, _ = make_controller()
         c._poll()
-        c._apply_injection({"hub_id": "HUB1", "port_id": 3, "kind": "port_flag"})
+        c._apply_injection({"hub_id": "HUB1", "port_id": 3, "kind": "port_fault"})
         c._poll()
 
-        self.assertTrue(port(c, 3)["blocked"])
-        self.assertFalse(port(c, 1)["blocked"])
+        self.assertTrue(port(c, 3)["faulted"])
+        self.assertIn("will not detect or charge", port(c, 3)["error_detail"])
+        self.assertFalse(port(c, 1)["faulted"])
+        self.assertFalse(c.get_hubs()[0]["blocked"])
 
     def test_injected_health_flag_blocks_the_hub(self):
         c, _ = make_controller()

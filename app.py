@@ -85,10 +85,11 @@ if os.environ.get("CAMBRIONIX_DEV_TOOLS"):
         hub_id: str | None = None
         # Which port, or hub-wide when omitted.
         port_id: int | None = None
-        # command   - simulate a refused set_mode (an event, expires on the TTL)
-        # port_flag - simulate the firmware E flag (polled, persists)
-        # health    - simulate hub health flags such as UV/OV/OT
-        # poll      - simulate the hub failing to poll
+        # command    - simulate a refused set_mode (an event, expires on the TTL)
+        # port_fault - simulate the per-port firmware `e` flag (polled, persists)
+        # health     - simulate hub health flags: UV/OV/OT, or E for the
+        #              hub-wide firmware error flag
+        # poll       - simulate the hub failing to poll
         kind: str = "command"
         code: str | None = "422"
         message: str = "*E422: Refused: an error flag is set"

@@ -157,10 +157,13 @@ explanation. Three things can trigger it:
 
 - **A command the hub refused** — the firmware answers `*E<nnn>` (for example
   `*E422: Refused: an error flag is set`) and the tile shows that code.
-- **A port error flag** — `E` in the firmware `state` output, meaning the hub will refuse
-  mode changes on that port.
-- **Hub health flags** — `UV`/`OV`/`OT` from the `health` command, or the hub failing to poll
-  at all. A failing hub keeps its tiles, dimmed, showing the last known readings.
+- **A port fault** — the firmware `e` flag. That port will not detect or charge an attached
+  device, so its tile alone turns red and shows `FAULT`.
+- **Hub health flags** — `UV`/`OV`/`OT` or the hub-wide `E` flag from the `health` command, or
+  the hub failing to poll at all. These redden the **hub header** and disable every control,
+  but deliberately leave the port tiles their normal colour: painting all of them red would
+  hide a genuinely broken port. A failing hub keeps its tiles, dimmed, showing last known
+  readings.
 
 Health flags latch: a hub that dipped below the under-voltage threshold keeps `UV` set, and
 refuses every mode change, until it is power-cycled — `cef` does not clear it.
@@ -177,8 +180,8 @@ Invoke-RestMethod -Method Post $u -ContentType application/json -Body (@{hub_id=
 Invoke-RestMethod -Method Post $u -ContentType application/json -Body (@{hub_id=$h; clear=$true} | ConvertTo-Json)
 ```
 
-`kind` is one of `command`, `port_flag`, `health` or `poll`. `verify_ui.py` runs all four
-automatically and checks both renderers agree.
+`kind` is one of `command`, `port_fault`, `health` or `poll`. `verify_ui.py` runs them all
+against a real hub and checks that both renderers agree.
 
 ## Testing and Debugging
 
