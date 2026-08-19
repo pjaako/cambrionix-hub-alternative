@@ -1,4 +1,4 @@
-let pendingPorts = new Map(); // "hubId-portId" -> {mode, at}
+let pendingPorts = new Map(); // "hubId-portId" -> {mode, at, via}
 const BRICK_CYCLE_MS = 3200; // must match the brick1/2/3 keyframe durations in index.html
 // Backstop for a port that never reaches its requested mode and whose failure
 // the backend never reports. Must stay below _COMMAND_ERROR_TTL in controller.py
@@ -42,9 +42,14 @@ function fmt(seconds) {
 
 function renderPort(p, hubId, modes) {
     const key = `${hubId}-${p.id}`;
-    const isPending = pendingPorts.has(key);
+    const pending = pendingPorts.get(key);
+    const isPending = !!pending;
     const attached = p.attachment !== 'detached';
-    const displayedMode = isPending ? pendingPorts.get(key).mode : writeMode(p.status);
+    const displayedMode = isPending ? pending.mode : writeMode(p.status);
+    // Which control started the change. The target mode alone cannot say:
+    // sync -> charge and off -> on both land on "on", so whichever button was
+    // pressed records itself and is the one that shows the transition.
+    const pendingVia = isPending ? pending.via : null;
     // Both computed server-side (controller.py) so this and the Jinja template
     // cannot drift. faulted = this port is broken (red); blocked = its control
     // is dead, which a hub-wide fault also causes without reddening the tile.
@@ -57,7 +62,9 @@ function renderPort(p, hubId, modes) {
             :                      'idle';
 
     const isOn = displayedMode !== 'off';
-    const btnClass = isPending ? 'pwr-btn is-pending' : `pwr-btn ${isOn ? 'is-on' : ''}`;
+    const btnClass = pendingVia === 'power'
+        ? 'pwr-btn is-pending'
+        : `pwr-btn ${isOn ? 'is-on' : ''}`;
     const toggle = `
         <button type="button" class="${btnClass}" ${isPending || blocked ? 'disabled' : ''}
                 aria-label="${isOn ? 'Turn charging off' : 'Turn charging on'}" aria-pressed="${isOn}"
@@ -71,7 +78,7 @@ function renderPort(p, hubId, modes) {
     const canSync = modes.includes('sync') && attached && p.status !== 'off';
     const inSync = displayedMode === 'sync';
     const syncToggle = canSync ? `
-        <button type="button" class="sync-btn ${inSync ? 'is-sync' : ''}" ${isPending || blocked ? 'disabled' : ''}
+        <button type="button" class="sync-btn ${inSync ? 'is-sync' : ''} ${pendingVia === 'sync' ? 'is-pending' : ''}" ${isPending || blocked ? 'disabled' : ''}
                 aria-label="${inSync ? 'Switch to charging' : 'Switch to sync'}" aria-pressed="${inSync}"
                 title="${inSync ? 'Sync mode - click to charge' : 'Charge mode - click to sync'}"
                 onclick="toggleSync('${hubId}', ${p.id}, '${displayedMode}')">
@@ -234,18 +241,18 @@ async function refresh() {
 }
 
 function togglePort(hubId, portId, currentMode) {
-    setMode(hubId, portId, currentMode === 'off' ? 'on' : 'off');
+    setMode(hubId, portId, currentMode === 'off' ? 'on' : 'off', 'power');
 }
 
 // Flips the data path only. The power button keeps owning on/off, so the two
 // controls never fight over the same transition.
 function toggleSync(hubId, portId, currentMode) {
-    setMode(hubId, portId, currentMode === 'sync' ? 'on' : 'sync');
+    setMode(hubId, portId, currentMode === 'sync' ? 'on' : 'sync', 'sync');
 }
 
-async function setMode(hubId, portId, mode) {
+async function setMode(hubId, portId, mode, via = 'power') {
     const key = `${hubId}-${portId}`;
-    pendingPorts.set(key, { mode, at: Date.now() });
+    pendingPorts.set(key, { mode, at: Date.now(), via });
     
     // Immediate local UI refresh to show transition state
     const container = document.getElementById('hubs-container');

@@ -426,6 +426,11 @@
     /* Blue is already the sync colour everywhere else (status text, the pending
        power pulse), so the button reuses it rather than inventing one. */
     .sync-btn.is-sync { color: var(--c-sync); }
+    /* Same pulse as the power button, on whichever control the user pressed. */
+    .sync-btn.is-pending {
+      color: var(--c-sync);
+      animation: pwr-pulse 1s ease-in-out infinite;
+    }
 
     .pwr-btn:disabled { cursor: not-allowed; opacity: 0.35; }
     .pwr-btn.is-on { color: var(--c-active); }
