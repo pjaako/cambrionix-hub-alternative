@@ -1,0 +1,8 @@
+# Expose the Cambrionix U16S hub serial port (FTDI FT230X, USB 0403:6015) to the
+# unprivileged LXC container as a char node under /dev/ct-serial/<kernel name>.
+# Matched by VID/PID only (never by serial) so swapping hubs needs no change.
+# The directory is bind-mounted into the container (see ct-serial.conf), so
+# replugs and hub swaps show up live without restarting the container.
+# 100000:100020 = container root : container group dialout (uid/gid map 0 -> 100000).
+ACTION=="add", SUBSYSTEM=="tty", KERNEL=="ttyUSB[0-9]*", ENV{ID_VENDOR_ID}=="0403", ENV{ID_MODEL_ID}=="6015", RUN+="/bin/sh -c 'mkdir -p /dev/ct-serial && rm -f /dev/ct-serial/%k && mknod -m 0660 /dev/ct-serial/%k c %M %m && chown 100000:100020 /dev/ct-serial/%k'"
+ACTION=="remove", SUBSYSTEM=="tty", KERNEL=="ttyUSB[0-9]*", RUN+="/bin/rm -f /dev/ct-serial/%k"

@@ -92,6 +92,14 @@ See `bugs/README.md` for the full index. Summary:
 
 - **`JsonRpcClient` residual gap**: `set_mode` now raises `CommandRefused` when the JSON-RPC reply carries an `error` member, but a `cbrx_connection_set` that returns a falsy *result* with no `error` member still passes silently. Not fixable without an older service to characterise it against.
 
+## Host passthrough kit
+
+`host/` holds the Proxmox-host kit that passes the hub's FTDI serial port (USB `0403:6015`, matched by VID/PID only) into this unprivileged LXC (CT 101). See `host/README.md`.
+- Design: host udev rule mirrors the node to `/dev/ct-serial/<kernel name>` (100000:100020, 0660), bind-mounted into the CT; `/etc/tmpfiles.d/cambrionix-tty.conf` links `/dev/ttyUSBn -> ct-serial/ttyUSBn` so pyserial sees the host's kernel name.
+- Verified 2026-10-09, host side applied and the static `devN:` passthrough gone: `/dev/ttyUSB0` is a symlink to `ct-serial/ttyUSB0` (188:0, root:dialout 0660, the host's devtmpfs bind-mounted at `/dev/ct-serial`). pyserial 3.5 keeps `info.device` as the symlink path and resolves sysfs by basename, so `comports()` reports VID/PID/serial for the link (the hub serial, identical to the sysfs `serial` attribute); the dangling `ttyUSB1..7` links enumerate with `vid=None` and `_classify_usb_serial()` skips them. `CliClient.discover_serial()` finds the hub both as root and as the `cambrionix` service user, and `cambrionix-hub.service` polls it normally. The by-id "known edge case" in §Pending verification does not apply here: the lookup matches `info.device`, which is the same `/dev/ttyUSB0` string the service opens.
+- `udevadm info` inside the CT has no udev database (it prints only `DEVNAME`), so the `ID_SERIAL_SHORT` cross-check has to run on the host.
+- Replug and hub-swap test passed 2026-10-09: the host recreated `ct-serial/ttyUSB0` and `cambrionix-hub.service` listed the hub again without a restart (the controller zeroes `_last_discovery` after a poll error and rediscovers on its own).
+
 ## Pending verification on Linux
 
 Commit `4f3c496` ("Run the CLI serial backend on Windows as well as Linux") was tested
