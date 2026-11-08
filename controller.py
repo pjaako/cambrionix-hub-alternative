@@ -150,13 +150,23 @@ class HubController:
                 for key in [k for k in self._command_errors if k[0] == hid]:
                     del self._command_errors[key]
 
-            # Add new hubs, close redundant new instances for existing hubs
+            # Add new hubs. A known hub whose last poll failed is replaced by the fresh
+            # instance: after a replug the hub can come back on another port (the old node
+            # stays taken while we still hold it), and the old instance would keep polling
+            # the dead node forever (seen 2026-11-08: ttyUSB0 -> ttyUSB1, I/O error every poll).
+            failed = {h["hub_id"] for h in self._raw_state if h.get("error")}
             for hid, h in new_hubs_dict.items():
                 if hid not in self._hubs:
                     logger.info(f"Hub {hid} discovered")
                     self._hubs[hid] = h
+                elif hid in failed:
+                    logger.info(f"Hub {hid} reconnected, replacing its failed instance")
+                    old = self._hubs[hid]
+                    if hasattr(old, "close"):
+                        old.close()
+                    self._hubs[hid] = h
                 else:
-                    # Hub already known, close the fresh discovery instance
+                    # Hub already known and healthy, close the fresh discovery instance
                     if hasattr(h, "close"):
                         h.close()
         except Exception as e:

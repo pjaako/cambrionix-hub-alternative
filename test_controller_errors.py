@@ -302,3 +302,46 @@ class TestInjection(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClosableHub(FakeHub):
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class TestReplug(unittest.TestCase):
+    def test_failed_hub_is_replaced_by_rediscovered_instance(self):
+        # Hub moves to another tty after a replug: the old instance keeps failing,
+        # discovery finds the same id on the new port, and must install that one.
+        old = ClosableHub("HUB1")
+        c, _ = make_controller(old)
+        c._poll()
+        old.poll_error = OSError(5, "Input/output error")
+        c._poll()
+        self.assertEqual(c._last_discovery, 0)
+
+        fresh = ClosableHub("HUB1")
+        with patch("controller.discover_hubs", return_value=[fresh]):
+            c._discover()
+
+        self.assertIs(c._hubs["HUB1"], fresh)
+        self.assertTrue(old.closed)
+        self.assertFalse(fresh.closed)
+        c._poll()
+        self.assertIsNone(c.get_hubs()[0]["error"])
+
+    def test_healthy_hub_keeps_its_instance(self):
+        old = ClosableHub("HUB1")
+        c, _ = make_controller(old)
+        c._poll()
+        fresh = ClosableHub("HUB1")
+        with patch("controller.discover_hubs", return_value=[fresh]):
+            c._discover()
+
+        self.assertIs(c._hubs["HUB1"], old)
+        self.assertTrue(fresh.closed)
+        self.assertFalse(old.closed)

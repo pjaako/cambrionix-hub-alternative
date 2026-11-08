@@ -102,6 +102,10 @@ See `bugs/README.md` for the full index. Summary:
   USB serial port with a VID, sent `id` and read for 1 s on every poll while no hub was registered. On the shared
   A1207 test host that hit the gauge's STM32 virtual COM port (`/dev/ttyACM0`) every 2 s and wrecked its data
   stream; the A1207 side now also opens its port with `exclusive=True`. Regression test: `test_discovery_filter.py`.
+- 2026-11-08: `_discover()` replaces a registered hub's instance when its last poll failed and discovery finds
+  the same hub id again (`controller.py`). Before, the fresh instance was always closed as "already known", so a hub
+  that came back on a different tty (ttyUSB0 -> ttyUSB1, because the dead node was still open) was polled on the
+  dead node forever. Test: `test_controller_errors.py::TestReplug`.
 - Replug and hub-swap test passed 2026-10-09: the host recreated `ct-serial/ttyUSB0` and `cambrionix-hub.service` listed the hub again without a restart (the controller zeroes `_last_discovery` after a poll error and rediscovers on its own).
 
 ## Pending verification on Linux
