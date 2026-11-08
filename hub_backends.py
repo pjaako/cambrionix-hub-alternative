@@ -677,16 +677,24 @@ class ApiProxyTransport(CliTransport):
 class CliClient(HubClient):
     @classmethod
     def _classify_usb_serial(cls) -> tuple[list["CliClient"], int, int]:
-        """Probe all USB serial ports in one pass.
+        """Probe the FTDI USB serial ports in one pass.
+
+        Cambrionix hubs expose their CLI over an FTDI chip (vendor 0x0403), so only those
+        ports are opened. Other USB serial devices are counted as `other` without being
+        touched: opening them, writing `id` and reading for a second every poll corrupted
+        the data stream of an unrelated instrument sharing the host (2026-11-08).
 
         Returns (hubs, inaccessible_count, other_count).
         inaccessible: port opened but OS rejected it (busy, permission denied).
-        other: port opened but did not respond as a Cambrionix hub.
+        other: non-FTDI USB serial port, or an FTDI port that did not answer as a hub.
         """
         from serial.tools import list_ports
         hubs, inaccessible, other = [], 0, 0
         for p in list_ports.comports():
             if p.vid is None:
+                continue
+            if p.vid != _FTDI_VID:
+                other += 1
                 continue
             client = cls.via_serial(p.device)
             try:

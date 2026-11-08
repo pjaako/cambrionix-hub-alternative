@@ -98,6 +98,10 @@ See `bugs/README.md` for the full index. Summary:
 - Design: host udev rule mirrors the node to `/dev/ct-serial/<kernel name>` (100000:100020, 0660), bind-mounted into the CT; `/etc/tmpfiles.d/cambrionix-tty.conf` links `/dev/ttyUSBn -> ct-serial/ttyUSBn` so pyserial sees the host's kernel name.
 - Verified 2026-10-09, host side applied and the static `devN:` passthrough gone: `/dev/ttyUSB0` is a symlink to `ct-serial/ttyUSB0` (188:0, root:dialout 0660, the host's devtmpfs bind-mounted at `/dev/ct-serial`). pyserial 3.5 keeps `info.device` as the symlink path and resolves sysfs by basename, so `comports()` reports VID/PID/serial for the link (the hub serial, identical to the sysfs `serial` attribute); the dangling `ttyUSB1..7` links enumerate with `vid=None` and `_classify_usb_serial()` skips them. `CliClient.discover_serial()` finds the hub both as root and as the `cambrionix` service user, and `cambrionix-hub.service` polls it normally. The by-id "known edge case" in §Pending verification does not apply here: the lookup matches `info.device`, which is the same `/dev/ttyUSB0` string the service opens.
 - `udevadm info` inside the CT has no udev database (it prints only `DEVNAME`), so the `ID_SERIAL_SHORT` cross-check has to run on the host.
+- 2026-11-08: `CliClient._classify_usb_serial()` probes FTDI ports only (`_FTDI_VID`). Until then it opened every
+  USB serial port with a VID, sent `id` and read for 1 s on every poll while no hub was registered. On the shared
+  A1207 test host that hit the gauge's STM32 virtual COM port (`/dev/ttyACM0`) every 2 s and wrecked its data
+  stream; the A1207 side now also opens its port with `exclusive=True`. Regression test: `test_discovery_filter.py`.
 - Replug and hub-swap test passed 2026-10-09: the host recreated `ct-serial/ttyUSB0` and `cambrionix-hub.service` listed the hub again without a restart (the controller zeroes `_last_discovery` after a poll error and rediscovers on its own).
 
 ## Pending verification on Linux
