@@ -116,6 +116,10 @@ See `bugs/README.md` for the full index. Summary:
   registration flipped between them on every discovery and only one was shown. Tests in `test_controller_errors.py`
   (`TestReplug`) and `test_discovery_filter.py`. Discovery interval lowered from 60 s to 10 s at the same time: a round no
   longer opens any registered hub's port, so it is only a port enumeration.
+- 2026-11-08: the sync toggle is offered on every powered port, not only "attached" ones (template + main.js).
+  A mains-powered instrument draws 0 mA and reads as detached, yet it only enumerates on the host in sync mode;
+  after an "off" the power button lands in charge mode and the port looked empty, so sync was unreachable and the
+  Siglent generator on port 14 of DT04KRQJ never came back. Recovery is now power (charge) -> sync, or the API.
 - Replug and hub-swap test passed 2026-10-09: the host recreated `ct-serial/ttyUSB0` and `cambrionix-hub.service` listed the hub again without a restart (the controller zeroes `_last_discovery` after a poll error and rediscovers on its own).
 
 ## Pending verification on Linux

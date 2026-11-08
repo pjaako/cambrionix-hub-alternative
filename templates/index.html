@@ -521,7 +521,9 @@
               </div>
               <div class="tile-foot">
                 {% if p.faulted %}<span class="tile-error" title="{{ p.error_detail or '' }}">{{ ('E' ~ p.command_error.code) if p.command_error and p.command_error.code else ('FAULT' if p.port_error else 'ERROR') }}</span>{% endif %}
-                {%- set can_sync = has_sync and attached and p.status != 'off' -%}
+                {#- Sync is offered on every powered port, attached or not: a mains-powered device
+                    (instrument) draws 0 mA and reads as detached, yet it only enumerates in sync mode. -#}
+                {%- set can_sync = has_sync and p.status != 'off' -%}
                 {%- set in_sync = p.status == 'sync' -%}
                 {% if can_sync %}<button type="button" class="sync-btn {{ 'is-sync' if in_sync else '' }}" {{ 'disabled' if p.blocked else '' }}
                         aria-label="{{ 'Switch to charging' if in_sync else 'Switch to sync' }}" aria-pressed="{{ 'true' if in_sync else 'false' }}"

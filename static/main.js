@@ -77,10 +77,12 @@ function renderPort(p, hubId, modes) {
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
         </button>`;
 
-    // Sync toggle: only where the hub actually supports the mode, and only on
-    // a live attached port - an off port reports no attachment, and flipping a
-    // detached one has nothing to act on.
-    const canSync = modes.includes('sync') && attached && p.status !== 'off';
+    // Sync toggle: where the hub supports the mode, on every powered port. Not
+    // gated on attachment: a mains-powered device (an instrument) draws 0 mA and
+    // reads as detached, yet it only enumerates on the host in sync mode, so
+    // sync must be reachable from a port that looks empty. Off ports are excluded:
+    // the power button brings them back first.
+    const canSync = modes.includes('sync') && p.status !== 'off';
     const inSync = displayedMode === 'sync';
     const syncToggle = canSync ? `
         <button type="button" class="sync-btn ${inSync ? 'is-sync' : ''} ${pendingVia === 'sync' ? 'is-pending' : ''}" ${isPending || blocked ? 'disabled' : ''}
