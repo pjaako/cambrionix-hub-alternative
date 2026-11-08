@@ -106,6 +106,10 @@ See `bugs/README.md` for the full index. Summary:
   the same hub id again (`controller.py`). Before, the fresh instance was always closed as "already known", so a hub
   that came back on a different tty (ttyUSB0 -> ttyUSB1, because the dead node was still open) was polled on the
   dead node forever. Test: `test_controller_errors.py::TestReplug`.
+- 2026-11-08: `SerialTransport` is bound to the FTDI USB serial number, not the tty name: on every reopen it
+  re-resolves the port carrying that serial (`_port_for_usb_serial`) and drops its handle on any error. With two
+  hubs replugged, the names swapped (ttyUSB0 <-> ttyUSB1) and the old transport polled the other hub under a cached
+  hub_id while holding its port, so the second hub could never be discovered. Test: `test_serial_transport.py`.
 - Replug and hub-swap test passed 2026-10-09: the host recreated `ct-serial/ttyUSB0` and `cambrionix-hub.service` listed the hub again without a restart (the controller zeroes `_last_discovery` after a poll error and rediscovers on its own).
 
 ## Pending verification on Linux

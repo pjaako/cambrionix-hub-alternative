@@ -577,6 +577,15 @@ def _normalize_usb_serial(info) -> str | None:
     return sn
 
 
+def _port_for_usb_serial(sn: str) -> str | None:
+    """OS port name that currently carries the FTDI chip with USB serial `sn`, or None."""
+    from serial.tools import list_ports
+    for info in list_ports.comports():
+        if _normalize_usb_serial(info) == sn:
+            return info.device
+    return None
+
+
 def _usb_serial_for_port(port: str) -> str | None:
     """USB serial number the OS assigned to `port`, or None if it can't be determined.
 
@@ -591,19 +600,48 @@ def _usb_serial_for_port(port: str) -> str | None:
 
 
 class SerialTransport(CliTransport):
+    """CLI over the hub's FTDI serial port.
+
+    The transport is bound to the FTDI chip's USB serial number, not to the OS port name:
+    after a replug a hub can come back under another name (ttyUSB0 <-> ttyUSB1 swap seen on
+    2026-11-08 with two hubs), and a transport that just reopened its old name would then talk
+    to the other hub under a cached identity. Every reopen therefore re-resolves the port that
+    currently carries the recorded serial number.
+    """
+
     def __init__(self, port: str, baud_rate: int = 115200, timeout: float = 1.0):
         self._port = port
         self._baud = baud_rate
         self._timeout = timeout
         self._ser: serial.Serial | None = None
+        self._usb_sn: str | None = None   # learned at the first successful open
 
     def _ensure_open(self) -> None:
-        if self._ser is None or not self._ser.is_open:
-            # exclusive=True prevents a second connection (e.g. a concurrent
-            # rediscovery probe) from silently interleaving reads/writes on
-            # the same tty and corrupting responses; it fails loudly instead.
-            self._ser = serial.Serial(self._port, self._baud, timeout=self._timeout, exclusive=True)
-            self._ser.reset_input_buffer()
+        if self._ser is not None and self._ser.is_open:
+            return
+        if self._usb_sn is not None:
+            port = _port_for_usb_serial(self._usb_sn)
+            if port is None:
+                raise serial.SerialException(f"hub {self._usb_sn} is not connected (was {self._port})")
+            if port != self._port:
+                logger.info("hub %s moved from %s to %s", self._usb_sn, self._port, port)
+                self._port = port
+        # exclusive=True prevents a second connection (e.g. a concurrent
+        # rediscovery probe) from silently interleaving reads/writes on
+        # the same tty and corrupting responses; it fails loudly instead.
+        self._ser = serial.Serial(self._port, self._baud, timeout=self._timeout, exclusive=True)
+        self._ser.reset_input_buffer()
+        if self._usb_sn is None:
+            self._usb_sn = _usb_serial_for_port(self._port)
+
+    def _drop(self) -> None:
+        """Forget the handle so the next call re-resolves and reopens the port."""
+        ser, self._ser = self._ser, None
+        if ser is not None:
+            try:
+                ser.close()
+            except Exception:
+                pass
 
     def send_command(self, cmd: str) -> str:
         try:
@@ -631,17 +669,17 @@ class SerialTransport(CliTransport):
             logger.debug("SERIAL RECV [%s] <-\n%s", self._port, response)
             return response
         except serial.SerialException:
+            self._drop()
             raise
         except OSError as e:
-            self._ser = None  # force reopen on next call
+            self._drop()
             raise serial.SerialException(f"{self._port}: {e}") from e
 
     def hub_serial(self) -> str | None:
-        return _usb_serial_for_port(self._port)
+        return self._usb_sn or _usb_serial_for_port(self._port)
 
     def close(self) -> None:
-        if self._ser and self._ser.is_open:
-            self._ser.close()
+        self._drop()
 
 
 class ApiProxyTransport(CliTransport):
