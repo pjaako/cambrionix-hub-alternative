@@ -88,7 +88,9 @@ class HubController:
         self._command_queue = queue.Queue()
         self._poll_interval = poll_interval
         self._last_discovery = 0.0
-        self._discovery_interval = 60.0
+        # Registered hubs are matched by serial without opening their ports, so a round is
+        # just a port enumeration; 10 s keeps a replugged second hub from waiting a minute.
+        self._discovery_interval = 10.0
 
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker_thread.start()

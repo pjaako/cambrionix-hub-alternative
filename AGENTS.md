@@ -114,7 +114,8 @@ See `bugs/README.md` for the full index. Summary:
   `_classify_usb_serial(known)` match them by FTDI serial). Because every registered client holds its port
   exclusively, probing it failed as "inaccessible" and `_discover()` treated the hub as removed; with two hubs the
   registration flipped between them on every discovery and only one was shown. Tests in `test_controller_errors.py`
-  (`TestReplug`) and `test_discovery_filter.py`.
+  (`TestReplug`) and `test_discovery_filter.py`. Discovery interval lowered from 60 s to 10 s at the same time: a round no
+  longer opens any registered hub's port, so it is only a port enumeration.
 - Replug and hub-swap test passed 2026-10-09: the host recreated `ct-serial/ttyUSB0` and `cambrionix-hub.service` listed the hub again without a restart (the controller zeroes `_last_discovery` after a poll error and rediscovers on its own).
 
 ## Pending verification on Linux
