@@ -714,7 +714,7 @@ class ApiProxyTransport(CliTransport):
 
 class CliClient(HubClient):
     @classmethod
-    def _classify_usb_serial(cls) -> tuple[list["CliClient"], int, int]:
+    def _classify_usb_serial(cls, known: dict | None = None) -> tuple[list["CliClient"], int, int]:
         """Probe the FTDI USB serial ports in one pass.
 
         Cambrionix hubs expose their CLI over an FTDI chip (vendor 0x0403), so only those
@@ -722,17 +722,28 @@ class CliClient(HubClient):
         touched: opening them, writing `id` and reading for a second every poll corrupted
         the data stream of an unrelated instrument sharing the host (2026-11-08).
 
+        `known` maps hub_id -> registered client. A port whose FTDI serial number belongs
+        to a known hub is NOT reopened: the registered client holds it exclusively, so a
+        probe would fail and the hub would wrongly look absent (with two hubs this made
+        the registration flip between them at every discovery). The known client is
+        returned as present instead.
+
         Returns (hubs, inaccessible_count, other_count).
         inaccessible: port opened but OS rejected it (busy, permission denied).
         other: non-FTDI USB serial port, or an FTDI port that did not answer as a hub.
         """
         from serial.tools import list_ports
+        known = known or {}
         hubs, inaccessible, other = [], 0, 0
         for p in list_ports.comports():
             if p.vid is None:
                 continue
             if p.vid != _FTDI_VID:
                 other += 1
+                continue
+            sn = _normalize_usb_serial(p)
+            if sn in known:
+                hubs.append(known[sn])
                 continue
             client = cls.via_serial(p.device)
             try:
@@ -747,8 +758,8 @@ class CliClient(HubClient):
         return hubs, inaccessible, other
 
     @classmethod
-    def discover_serial(cls) -> list["CliClient"]:
-        hubs, _, _ = cls._classify_usb_serial()
+    def discover_serial(cls, known: dict | None = None) -> list["CliClient"]:
+        hubs, _, _ = cls._classify_usb_serial(known)
         return hubs
 
     @classmethod

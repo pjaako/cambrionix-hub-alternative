@@ -345,3 +345,40 @@ class TestReplug(unittest.TestCase):
         self.assertIs(c._hubs["HUB1"], old)
         self.assertTrue(fresh.closed)
         self.assertFalse(old.closed)
+
+    def test_healthy_hubs_are_passed_as_known_and_kept(self):
+        # Two registered healthy hubs hold their ports; discovery must get them as `known`,
+        # report them present (same objects) and keep both, closing nothing.
+        a, b = ClosableHub("HUBA"), ClosableHub("HUBB")
+        c, _ = make_controller(a)
+        c._hubs["HUBB"] = b
+        c._poll()
+        seen = {}
+
+        def fake_discover(known=None):
+            seen["known"] = dict(known or {})
+            return list(known.values())           # present, nothing new, nothing reopened
+
+        with patch("controller.discover_hubs", side_effect=fake_discover):
+            c._discover()
+
+        self.assertEqual(set(seen["known"]), {"HUBA", "HUBB"})
+        self.assertIs(c._hubs["HUBA"], a)
+        self.assertIs(c._hubs["HUBB"], b)
+        self.assertFalse(a.closed or b.closed)
+
+    def test_failed_hub_is_not_passed_as_known(self):
+        a = ClosableHub("HUBA")
+        c, _ = make_controller(a)
+        c._poll()
+        a.poll_error = OSError(5, "Input/output error")
+        c._poll()
+        seen = {}
+
+        def fake_discover(known=None):
+            seen["known"] = dict(known or {})
+            return []
+
+        with patch("controller.discover_hubs", side_effect=fake_discover):
+            c._discover()
+        self.assertEqual(seen["known"], {})       # failed hub must be probed afresh

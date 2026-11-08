@@ -131,7 +131,12 @@ class HubController:
     def _discover(self) -> None:
         logger.debug("Discovering hubs...")
         try:
-            discovered = discover_hubs()
+            # Healthy registered hubs hold their ports exclusively; discovery must not reopen
+            # them (the probe would fail and the hub would look absent). They are passed in and
+            # come back as the same objects. A hub whose last poll failed is probed afresh.
+            failed = {h["hub_id"] for h in self._raw_state if h.get("error")}
+            known = {hid: h for hid, h in self._hubs.items() if hid not in failed}
+            discovered = discover_hubs(known)
             new_hubs_dict = {h.hub_id: h for h in discovered}
 
             # Close and remove hubs no longer present
@@ -154,11 +159,12 @@ class HubController:
             # instance: after a replug the hub can come back on another port (the old node
             # stays taken while we still hold it), and the old instance would keep polling
             # the dead node forever (seen 2026-11-08: ttyUSB0 -> ttyUSB1, I/O error every poll).
-            failed = {h["hub_id"] for h in self._raw_state if h.get("error")}
             for hid, h in new_hubs_dict.items():
                 if hid not in self._hubs:
                     logger.info(f"Hub {hid} discovered")
                     self._hubs[hid] = h
+                elif h is self._hubs[hid]:
+                    continue                      # known healthy hub, reported present as is
                 elif hid in failed:
                     logger.info(f"Hub {hid} reconnected, replacing its failed instance")
                     old = self._hubs[hid]

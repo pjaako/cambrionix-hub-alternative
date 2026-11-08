@@ -110,6 +110,11 @@ See `bugs/README.md` for the full index. Summary:
   re-resolves the port carrying that serial (`_port_for_usb_serial`) and drops its handle on any error. With two
   hubs replugged, the names swapped (ttyUSB0 <-> ttyUSB1) and the old transport polled the other hub under a cached
   hub_id while holding its port, so the second hub could never be discovered. Test: `test_serial_transport.py`.
+- 2026-11-08: discovery no longer reopens the ports of healthy registered hubs (`discover_hubs(known)` /
+  `_classify_usb_serial(known)` match them by FTDI serial). Because every registered client holds its port
+  exclusively, probing it failed as "inaccessible" and `_discover()` treated the hub as removed; with two hubs the
+  registration flipped between them on every discovery and only one was shown. Tests in `test_controller_errors.py`
+  (`TestReplug`) and `test_discovery_filter.py`.
 - Replug and hub-swap test passed 2026-10-09: the host recreated `ct-serial/ttyUSB0` and `cambrionix-hub.service` listed the hub again without a restart (the controller zeroes `_last_discovery` after a poll error and rediscovers on its own).
 
 ## Pending verification on Linux
